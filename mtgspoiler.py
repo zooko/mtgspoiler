@@ -5,7 +5,7 @@
 # See the end of this file for the free software, open source license (BSD-style).
 
 # CVS:
-__cvsid = '$Id: mtgspoiler.py,v 1.19 2002/12/19 05:28:10 zooko Exp $'
+__cvsid = '$Id: mtgspoiler.py,v 1.20 2002/12/19 05:38:17 zooko Exp $'
 
 # HOWTO:
 # 1. Get pyutil_new from `http://sf.net/projects/pyutil'.
@@ -159,8 +159,9 @@ UPDATE_NAMES={
     "Artists": "Artist",
     }
 
-RARITY_RE=re.compile("(Common|Uncommon|Rare|Land|C|U|R|L) ?([1-9][0-9]*(/[1-9][0-9]*(/[1-9][0-9]*)?)?)?$")
+RARITY_RE=re.compile("(Dirt Common|Common|Uncommon|Rare|Land|C|U|R|L) ?([1-9][0-9]*(/[1-9][0-9]*(/[1-9][0-9]*)?)?)?$")
 UPDATE_RARITIES={
+    'Dirt Common': 'L', # XXX Not sure if revised.txt's "Dirt Common 1" is the same as L.
     'Common': 'C',
     'Uncommon': 'U',
     'Rare': 'R',
@@ -876,7 +877,11 @@ d = DB()
 
 # print "sys.argv: ", sys.argv
 for arg in sys.argv[1:]:
-    d.import_list(arg)
+#     try:
+        d.import_list(arg)
+#     except exceptions.StandardError, le:
+#         print humanreadable.hr(le)
+#         raise le
 
 def sort_board(b):
     ls = []
