@@ -5,7 +5,7 @@
 # See the end of this file for the free software, open source license (BSD-style).
 
 # CVS:
-__cvsid = '$Id: mtgspoiler.py,v 1.20 2002/12/19 05:38:17 zooko Exp $'
+__cvsid = '$Id: mtgspoiler.py,v 1.21 2002/12/19 08:16:59 zooko Exp $'
 
 # HOWTO:
 # 1. Get pyutil_new from `http://sf.net/projects/pyutil'.
@@ -153,10 +153,12 @@ UPDATE_NAMES={
     "Casting Cost": "Mana Cost",
     "Cost": "Mana Cost",
     "Card Type": "Type & Class",
+    "Card Rarity": "Rarity",
     "CardCard Type": "Type & Class",
     "Type": "Type & Class",
     "Color": "Card Color",
     "Artists": "Artist",
+    "Illus": "Artist",
     }
 
 RARITY_RE=re.compile("(Dirt Common|Common|Uncommon|Rare|Land|C|U|R|L) ?([1-9][0-9]*(/[1-9][0-9]*(/[1-9][0-9]*)?)?)?$")
@@ -172,11 +174,10 @@ UPDATE_RARITIES={
     'L': 'L',
     }
 
-CARD_NAME_K_VERSIONS_RE=re.compile("(.*?) (\([2-9][0-9]* ?versions\))", re.IGNORECASE)
 def _fixnames(name):
     name = name.replace('\xc6', 'AE')
     # alliances.txt, arabian_nights.txt, and homelands.txt have "(2 versions)" in the Card Name.
-    mo = CARD_NAME_K_VERSIONS_RE.match(name)
+    mo = CARDNAME_K_VERSIONS_RE.match(name)
     if mo:
         name = mo.group(1)
     return name
@@ -393,6 +394,13 @@ class Card(dictutil.UtilDict):
 
         return res
 
+CARDS_TOTAL_RE=re.compile("([1-9][0-9]*) Cards? Total", re.IGNORECASE)
+SPOILER_NAME_RE=re.compile("(.*?) (Spoiler|Spoiler List|Card Spoiler List|Edition Card List)$", re.IGNORECASE)
+
+CARDNAME_K_VERSIONS_RE_STR="(.*?)( (\(([2-9][0-9]*) ?versions\)))?\s*$"
+CARDNAME_K_VERSIONS_RE=re.compile(CARDNAME_K_VERSIONS_RE_STR, re.IGNORECASE)
+CARDNAME_FIELD_RE=re.compile("Card (Name|Title):\s*" + CARDNAME_K_VERSIONS_RE_STR)
+
 DOUBLE_CARD_NAME_RE=re.compile("(.*)/(.*) \((.*)\)")
 LAND_TYPE_AND_CLASS_RE=re.compile("(?<![Ee]nchant )[Ll]and")
 CREATURE_TYPE_AND_CLASS_RE=re.compile("(?<![Ee]nchant )[Cc]reature")
@@ -400,6 +408,17 @@ ENCHANTMENT_TYPE_AND_CLASS_RE=re.compile("[Ee]nchant")
 ARTIFACT_TYPE_AND_CLASS_RE=re.compile("(?<![Ee]nchant )[Aa]rtifact")
 INSTANT_TYPE_AND_CLASS_RE=re.compile("[Ii]nstant|[Ii]nterrupt")
 INSTANT_CARD_TEXT_RE=re.compile("[Yy]ou may play .* any time you could play an instant")
+
+UL_CARDNAME_RE_STR="(.*?)\s*"
+UL_MANACOST_RE_STR="([X1-9]*[BGRUW]*)\s*" # opt
+UL_TYPECLASS_RE_STR="(.*?)\s*"
+UL_RARITY_RE_STR="([RUC])\s*"
+UL_POWTUF_RE_STR="([0-9]*\**X*/[0-9]*\**X*)\s*" # opt
+UL_CARDTEXT_RE_STR="(.*?)\s*"
+UL_ARTIST_RE_STR="Illus. (.*?)\s*"
+UL_CARDNUM_RE_STR="([0-9]*)/([0-9]*)\s*"
+
+URZAS_LEGACY_CARD_RE=re.compile("^" + UL_CARDNAME_RE_STR + "\n" + "(?:" + UL_MANACOST_RE_STR + "\n)?" + UL_TYPECLASS_RE_STR + "\n" + UL_RARITY_RE_STR + "\n" + "(?:" + UL_POWTUF_RE_STR + "\n)?" + UL_CARDTEXT_RE_STR + "\n" + UL_ARTIST_RE_STR + "\n" + UL_CARDNUM_RE_STR, re.MULTILINE + re.DOTALL)
 
 class DB(dictutil.UtilDict):
     def __init__(self, initialdata={}, importfile=None):
@@ -602,6 +621,59 @@ class DB(dictutil.UtilDict):
             thiscard[thiskey] = thisval.strip()
             # assert not ((thiskey == "Mana Cost") and (thisval.strip().find("and") != -1)), "thiscard.data: %s, thiskey: %s, thisval: %s" % (thiscard.data, thiskey, thisval,) # we fix this in "_update()".
         
+    def _find_missing_names(self, fname):
+        f = open(fname, 'r')
+        names = dictutil.NumDict()
+        for line in f.xreadlines():
+            mo = CARDNAME_FIELD_RE.match(strutil.pop_trailing_newlines(line))
+            if mo:
+                if mo.group(5):
+                    names.add_num(_fixnames(mo.group(2)), int(mo.group(5)))
+                else:
+                    names.inc(_fixnames(mo.group(2)))
+
+        for k, v, in names.items():
+            if v != 1:
+                print "k: %s, v: %s" % (k, v,)
+        for card in self.cards():
+            if card['Card Name'] not in names:
+                print "%s in db and not in file" % card['Card Name']
+        for name in names.keys():
+            if not self.data.has_key(name):
+                print "%s in file and not in db" % name
+
+    def import_urzas_legacy_spoiler(self, fname):
+        """
+        This reads in a spoiler list in "Urzas Legacy" text format and populates `self.data'.
+        """
+        setname = "Urza's Legacy"
+        s = open(fname, 'r').read()
+        index = s.find("Angelic Curator")
+        assert index != -1
+        mo = URZAS_LEGACY_CARD_RE.search(s, index)
+        while mo:
+            thiscard = Card()
+            thiscard['Set Name'] = setname
+            self._process_key_and_val('Card Name', mo.group(1), thiscard)
+            if mo.group(2) is not None:
+                self._process_key_and_val('Casting Cost', mo.group(2), thiscard)
+            self._process_key_and_val('Card Type', mo.group(3), thiscard)
+            self._process_key_and_val('Card Rarity', mo.group(4), thiscard)
+            if mo.group(5) is not None:
+                self._process_key_and_val('Pow/Tou', mo.group(5), thiscard)
+            self._process_key_and_val('Card Text', mo.group(6), thiscard)
+            self._process_key_and_val('Illus', mo.group(7), thiscard)
+            self._process_key_and_val('Card #', mo.group(8), thiscard)
+
+            if thiscard.colors():
+                self._process_key_and_val('Card Color', thiscard.colors(), thiscard)
+            elif thiscard.is_artifact():
+                self._process_key_and_val('Card Color', 'Artifact', thiscard)
+            elif thiscard.is_land():
+                self._process_key_and_val('Card Color', 'L', thiscard)
+
+            mo = URZAS_LEGACY_CARD_RE.search(s, mo.end())
+
     def import_list(self, fname):
         """
         This reads in a spoiler list in Wizards of the Coast text format and populates `self.data'.
@@ -609,6 +681,8 @@ class DB(dictutil.UtilDict):
         f = open(fname, 'r')
         id2cs = dictutil.UtilDict() # k: tuple of (set name, card number,), v: list of card objects
         setname = None
+        cardstotal = None # a self-check to see if we got them all
+        namesfound = dictutil.NumDict() # a self-check to see if we got them all
         incard = false
         thiscard = None
         thiskey = None
@@ -616,12 +690,12 @@ class DB(dictutil.UtilDict):
         prevline = None # just for debugging
         for line in f.xreadlines():
             line = strutil.pop_trailing_newlines(line)
-            if line[:len("Card Name:")] == "Card Name:":
-                incard = true
-                thiscard = Card()
-                if setname:
-                    thiscard['Set Name'] = setname
-            elif line[:len("Card Title:")] == "Card Title:":
+            mo = CARDNAME_FIELD_RE.match(line)
+            if mo:
+                if mo.group(5):
+                    namesfound.add_num(_fixnames(mo.group(2)), int(mo.group(5)))
+                else:
+                    namesfound.inc(_fixnames(mo.group(2)))
                 incard = true
                 thiscard = Card()
                 if setname:
@@ -676,9 +750,20 @@ class DB(dictutil.UtilDict):
                     id2cs.setdefault((thiscard['Set Name'], thisval,), []).append(thiscard)
                     incard = false
                     thiscard[thiskey] = thisval
-            elif (not setname) and (line.find("Spoiler") != -1):
-                setname = line[:line.find("Spoiler")-1]
+            elif (not setname) and SPOILER_NAME_RE.match(line):
+                setname = SPOILER_NAME_RE.match(line).group(1)
+            elif CARDS_TOTAL_RE.match(line):
+                cardstotal = int(CARDS_TOTAL_RE.match(line).group(1))
+
             prevline = line # just for debugging
+
+        if setname == "Antiquities":
+            cardstotal -= 1 # error in antiquities.txt cardstotal, AFAICT
+
+        if setname == "Urza's Legacy":
+            # whoops -- this one is in a completely different format.
+            # assert len(self.cards()) == 0 # only true if this is the first spoiler list we have loaded
+            self.import_urzas_legacy_spoiler(fname)
 
         # Okay now fix up any obsolete or inconsistent bits.
         map(Card._update, self.cards())
@@ -692,6 +777,7 @@ class DB(dictutil.UtilDict):
                 two = cs[1]
                 subone, subtwo = one['Card Name'], two['Card Name']
                 for thiscard in (one, two,):
+                    assert thiscard['Card Name'], thiscard.data
                     thiscard['This Card Name'] = thiscard['Card Name']
                     mo = DOUBLE_CARD_NAME_RE.match(thiscard['Card Name'])
                     if mo is not None:
@@ -722,9 +808,19 @@ class DB(dictutil.UtilDict):
                     newc["Card Text"] = one['This Card Name'] + " -- " + one.get("Card Text",'') + "\n" + two['This Card Name'] + " -- " + two.get("Card Text",'')
 
                 del self[one['Card Name']]
-                del self[two['Card Name']]
+                try:
+                    del self[two['Card Name']]
+                except:
+                    print two.data
+                    print two
+                    raise
                 del newc['This Card Name']
                 self[newname] = newc
+        # print "cardstotal: %s, after merging, we had %s" % (cardstotal, len(self.cards()),)
+        if (cardstotal is not None) and (cardstotal != len(self.cards())) and ((cardstotal != namesfound.sum()) or (len(self.cards()) != len(namesfound))):
+            print "after merge, cardstotal: %s, namesfound.sum(): %s, len(namesfound): %s, len(self.cards()): %s" % (cardstotal, namesfound.sum(), len(namesfound), len(self.cards()),)
+            # self._find_missing_names(fname)
+        # assert cardstotal == len(self.cards()), "after merge cardstotal: %s, len(self.cards()): %s" % (cardstotal, len(self.cards()),)
 
     def export_list(self, fname):
         return self.export_list_new_and_slow(fname)
@@ -1030,8 +1126,8 @@ code.interact("mtgspoiler", None, locals())
 
 __setupstr="""
 SEED=30
-MYDECK="mine/trickerycolorGU.deck"
-HISDECK="others/sligh.deck"
+MYDECK="mine/B_type1.deck"
+HISDECK="others/type1_1st.deck"
 deck.import_list(MYDECK)
 hisdeck.import_list(HISDECK)
 deck.shuffle(SEED)
