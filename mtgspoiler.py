@@ -5,7 +5,7 @@
 # See the end of this file for the free software, open source license (BSD-style).
 
 # CVS:
-__cvsid = '$Id: mtgspoiler.py,v 1.16 2002/12/19 05:19:23 zooko Exp $'
+__cvsid = '$Id: mtgspoiler.py,v 1.17 2002/12/19 05:22:10 zooko Exp $'
 
 # HOWTO:
 # 1. Get pyutil_new from `http://sf.net/projects/pyutil'.
@@ -159,7 +159,7 @@ UPDATE_NAMES={
     "Artists": "Artist",
     }
 
-RARITY_RE=re.compile("(Common|Uncommon|Rare|Land|C|U|R|L) ?([1-9](/[1-9](/[1-9])?)?)?$")
+RARITY_RE=re.compile("(Common|Uncommon|Rare|Land|C|U|R|L) ?([1-9][0-9]*(/[1-9][0-9]*(/[1-9][0-9]*)?)?)?$")
 UPDATE_RARITIES={
     'Common': 'C',
     'Uncommon': 'U',
