@@ -5,7 +5,7 @@
 # See the end of this file for the free software, open source license (BSD-style).
 
 # CVS:
-__cvsid = '$Id: mtgspoiler.py,v 1.12 2002/12/19 04:15:28 zooko Exp $'
+__cvsid = '$Id: mtgspoiler.py,v 1.13 2002/12/19 04:29:08 zooko Exp $'
 
 # HOWTO:
 # 1. Get pyutil_new from `http://sf.net/projects/pyutil'.
@@ -150,7 +150,22 @@ UPDATE_NAMES={
     "Card Title": "Card Name",
     "Pow/Tough": "Pow/Tou",
     "Casting Cost": "Mana Cost",
+    "Cost": "Mana Cost",
     "Card Type": "Type & Class",
+    "Type": "Type & Class",
+    "Color": "Card Color",
+    }
+
+RARITY_RE=re.compile("(Common|Uncommon|Rare|Land|C|U|R|L) ?([1-9](/[1-9](/[1-9])?)?)?")
+UPDATE_RARITIES={
+    'Common': 'C',
+    'Uncommon': 'U',
+    'Rare': 'R',
+    'Land': 'L',
+    'C': 'C',
+    'U': 'U',
+    'R': 'R',
+    'L': 'L',
     }
 
 class Card(dictutil.UtilDict):
@@ -171,6 +186,10 @@ class Card(dictutil.UtilDict):
             if self.has_key(old):
                 self[new] = self[old]
                 del self[old]
+        mo = RARITY_RE.match(self['Rarity'])
+        assert mo is not None, { 'Rarity': self['Rarity'], 'self': self, }
+        self['Rarity'] = UPDATE_RARITIES[mo.group(1)] + mo.group(2)
+
         # Different spoiler lists do different things for the "Mana Cost" of a land.  What *we* do is remove it from the dict entirely.
         # (When exporting a spoiler list, it will be printed as "n/a", which is how the new spoiler lists do it.)
         try:
@@ -277,7 +296,8 @@ class Card(dictutil.UtilDict):
             s = formfield(s, k, self[k])
             ks.remove(k)
 
-        s = formfield(s, "Card #", self["Card #"])
+        if self.has_key('Card #'):
+            s = formfield(s, "Card #", self["Card #"])
         s+="\n"
         return s
 
@@ -319,7 +339,10 @@ class Card(dictutil.UtilDict):
             res += ', '
             res += self['Set Name']
             ks.remove('Set Name')
-        res += ' ' + RARITY_NAME_MAP[self['Rarity']] + '\n'
+        if len(self['Rarity']) > 1:
+            res += ' ' + RARITY_NAME_MAP[self['Rarity'][0]] + ' ' + self['Rarity'][1:] + '\n'
+        else:
+            res += ' ' + RARITY_NAME_MAP[self['Rarity']] + '\n'
         ks.remove('Rarity')
         if self['Card Text']:
             res += self['Card Text'] + '\n'
