@@ -5,7 +5,7 @@
 # See the end of this file for the free software, open source license (BSD-style).
 
 # CVS:
-__cvsid = '$Id: mtgspoiler.py,v 1.21 2002/12/19 08:16:59 zooko Exp $'
+__cvsid = '$Id: mtgspoiler.py,v 1.22 2002/12/19 09:35:27 zooko Exp $'
 
 # HOWTO:
 # 1. Get pyutil_new from `http://sf.net/projects/pyutil'.
@@ -93,6 +93,21 @@ SET_NAME_ABBREV_MAP = { # incomplete
     'Invasion': 'IN',
     'Planeshift': 'PL',
     'Apocalypse': 'AP',
+    'Homelands': 'HL',
+    "Urza's Legacy": 'UL',
+    "Mirage": 'MR',
+    "Tempest": 'TP',
+    "Urza's Saga": 'US',
+    "Alpha/Beta/Unlimited": 'UN',
+    "Revised": 'RV',
+    "Judgment": 'JU',
+    "Disrupt": 'WL',
+    "Nemesis": 'NE',
+    "Alliances": 'AL',
+    "Mercadian Masques": 'MM',
+    "Prophecy": 'PR',
+    "Seventh Edition": '7E',
+    "Arabian Nights": 'AN',
     }
 
 def findmagiccards_url(c):
@@ -395,7 +410,7 @@ class Card(dictutil.UtilDict):
         return res
 
 CARDS_TOTAL_RE=re.compile("([1-9][0-9]*) Cards? Total", re.IGNORECASE)
-SPOILER_NAME_RE=re.compile("(.*?) (Spoiler|Spoiler List|Card Spoiler List|Edition Card List)$", re.IGNORECASE)
+SPOILER_NAME_RE=re.compile("(.*?) (Spoiler|Spoiler List|Card Spoiler List|Edition Card List|Card List)$", re.IGNORECASE)
 
 CARDNAME_K_VERSIONS_RE_STR="(.*?)( (\(([2-9][0-9]*) ?versions\)))?\s*$"
 CARDNAME_K_VERSIONS_RE=re.compile(CARDNAME_K_VERSIONS_RE_STR, re.IGNORECASE)
@@ -403,7 +418,7 @@ CARDNAME_FIELD_RE=re.compile("Card (Name|Title):\s*" + CARDNAME_K_VERSIONS_RE_ST
 
 DOUBLE_CARD_NAME_RE=re.compile("(.*)/(.*) \((.*)\)")
 LAND_TYPE_AND_CLASS_RE=re.compile("(?<![Ee]nchant )[Ll]and")
-CREATURE_TYPE_AND_CLASS_RE=re.compile("(?<![Ee]nchant )[Cc]reature")
+CREATURE_TYPE_AND_CLASS_RE=re.compile("(?<![Ee]nchant )[Cc]reature|Summon ")
 ENCHANTMENT_TYPE_AND_CLASS_RE=re.compile("[Ee]nchant")
 ARTIFACT_TYPE_AND_CLASS_RE=re.compile("(?<![Ee]nchant )[Aa]rtifact")
 INSTANT_TYPE_AND_CLASS_RE=re.compile("[Ii]nstant|[Ii]nterrupt")
