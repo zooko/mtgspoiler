@@ -5,7 +5,7 @@
 # See the end of this file for the free software, open source license (BSD-style).
 
 # CVS:
-__cvsid = '$Id: mtgspoiler.py,v 1.28 2003/03/12 22:51:52 zooko Exp $'
+__cvsid = '$Id: mtgspoiler.py,v 1.29 2003/03/14 21:23:24 zooko Exp $'
 
 # HOWTO:
 # 1. Get pyutil_new from `http://sf.net/projects/pyutil'.
@@ -259,7 +259,7 @@ class Card(dictutil.UtilDict):
             if self.has_key(old):
                 self[new] = self[old]
                 del self[old]
-        assert self.has_key('Rarity'), "self: %s" % `self`
+        assert self.has_key('Rarity'), "self: %s" % dict.__repr__(self)
         mo = RARITY_RE.match(self['Rarity'])
         assert mo is not None, { 'Rarity': self['Rarity'], 'self': self, }
         self['Rarity'] = UPDATE_RARITIES[mo.group(1)] + (mo.group(2) or "")
@@ -683,6 +683,7 @@ class DB(dictutil.UtilDict):
         return self.values()
 
     def _process_key_and_val(self, thiskey, thisval, thiscard):
+        # print "yyy thiskey: %s, thisval: %s\n" % (thiskey, thisval,)
         thisval = strip_whitespace_and_quotes(thisval)
         thiskey = UPDATE_NAMES.get(thiskey, thiskey)
         if thiskey == "Card Name":
@@ -704,6 +705,7 @@ class DB(dictutil.UtilDict):
                     thiscard['Tou'] = thisval[thisval.find('/')+1:]
 
         if thiskey:
+            # print "xxx thiskey: %s, thisval: %s\n" % (thiskey, thisval,)
             thiscard[thiskey] = thisval
             # assert not ((thiskey == "Mana Cost") and (strip_whitespace_and_quotes(thisval).find("and") != -1)), "thiscard.data: %s, thiskey: %s, thisval: %s" % (thiscard.data, thiskey, thisval,) # we fix this in "_update()".
 
@@ -727,36 +729,6 @@ class DB(dictutil.UtilDict):
         for name in names.keys():
             if not self.has_key(name):
                 print "%s in file and not in db" % name
-
-    def import_legions_unofficial_prerelease_spoiler(self, fname):
-        """
-        This reads in a spoiler list in the format of the unofficial prerelease Legions text format and populates `self'.
-        """
-        setname = "Legions"
-        s = open(fname, 'r').read()
-        index = s.find("Akroma's Devoted")
-        assert index != -1
-        mo = LEGIONS_PRE_CARD_RE.search(s, index)
-        while mo:
-            thiscard = Card()
-            thiscard['Set Name'] = setname
-            self._process_key_and_val('Card Name', mo.group(1), thiscard)
-            if mo.group(2) is not None:
-                self._process_key_and_val('Casting Cost', mo.group(2), thiscard)
-            self._process_key_and_val('Card Type', mo.group(3), thiscard)
-            if mo.group(4) is not None:
-                self._process_key_and_val('Pow/Tou', mo.group(4), thiscard)
-            self._process_key_and_val('Card Text', mo.group(5), thiscard)
-            self._process_key_and_val('Card Rarity', mo.group(6), thiscard)
-
-            if thiscard.colors():
-                self._process_key_and_val('Card Color', thiscard.colors(), thiscard)
-            elif thiscard.is_artifact():
-                self._process_key_and_val('Card Color', 'Artifact', thiscard)
-            elif thiscard.is_land():
-                self._process_key_and_val('Card Color', 'L', thiscard)
-
-            mo = LEGIONS_PRE_CARD_RE.search(s, mo.end())
 
     def import_urzas_legacy_spoiler(self, fname):
         """
@@ -821,10 +793,11 @@ class DB(dictutil.UtilDict):
                     if thiskey == 'Rarity':
                         incard = false
                         thiscard[thiskey] = thisval
-                elif (line[0] in string.whitespace) or ((line.find(":") == -1) and (line.find("\t") == -1) and (line.find("  ") == -1) and ((thisval and len(thisval) > 50) or (thiskey == 'Flavor Text') or ((line[0] in string.ascii_uppercase) and (thiskey == 'Card Text')))) or (thisval and (thisval.strip()[0] == '"') and (thisval.strip()[-1] != '"') and (thiskey == 'Card Text')):
+                elif (line[0] in string.whitespace) or ((line.find(":") == -1) and (line.find("\t") == -1) and (line.find("  ") == -1) and ((thisval and len(thisval) > 50) or (thiskey == 'Flavor Text') or ((line[0] in string.ascii_uppercase) and (thiskey == 'Card Text')))) or (thisval and (thisval.strip()[0] == '"') and (thisval.strip()[-1] != '"') and (thiskey == 'Card Text') and (line.find("Flavor Text:") == -1)):
                     # Some spoiler lists have typos in which continued lines don't start with white space.  We'll assume that if this line doesn't have a separator (none of ':', '\t', or '  '), *and* if the previous line was more than 50 chars, that this is one of those typos.
                     # Some spoiler lists have typos in which attributions of quotes start on the line after the quote (in a Flavor Text field) but have no start with white space.  We'll assume that if this line begins with '-', doesn't have a separator (none of ':', '\t', or '  '), *and* if the previous line was a Flavor Text field, then this is one of those typos.
                     # Some older spoiler lists have linebreaks between lines of Card Text.  We'll assume that if the previous line was a Card Text field, and this line doesn't have a separator (none of ':', '\t', or '  '), *and* if the first character of the line is a capital letter, that this is one of those.  In addition, we'll assume that if the previous line was a Card Text field, and it began with a quote character but didn't end with one, that this is one of those.
+                    # Some spoiler lists (e.g. le_spoiler_en.txt in Chromeshell Crab) have typos where multilines are begun with a double-quote but not terminated with a double-quote!  So if the line contains "Flavor Text:" then we don't follow the "keep going til you find a double-quote since you started with a double-quote" rule.
                     assert thiskey is not None
                     assert thisval is not None
                     thisval += ' ' + line.strip()
@@ -879,9 +852,6 @@ class DB(dictutil.UtilDict):
         if setname == "Urza's Legacy":
             # whoops -- this one is in a completely different format.
             self.import_urzas_legacy_spoiler(fname)
-        elif setname == "Legions":
-            # whoops -- this one is in a completely different format.
-            self.import_legions_unofficial_prerelease_spoiler(fname)
 
         # Okay now fix up any obsolete or inconsistent bits.
         map(Card._update, self.cards())
