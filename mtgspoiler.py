@@ -5,7 +5,7 @@
 # See the end of this file for the free software, open source license (BSD-style).
 
 # CVS:
-__cvsid = '$Id: mtgspoiler.py,v 1.4 2002/03/04 22:01:46 zooko Exp $'
+__cvsid = '$Id: mtgspoiler.py,v 1.5 2002/03/04 22:02:22 zooko Exp $'
 
 # HOWTO:
 # 1. Get pyutil from `http://sf.net/projects/pyutil'.
@@ -39,7 +39,6 @@ __cvsid = '$Id: mtgspoiler.py,v 1.4 2002/03/04 22:01:46 zooko Exp $'
 
 # TODO:
 # * import "Oracle" errata and apply them...
-# * deal with the "double cards" that have two little cards printed on one card.
 
 # standard modules
 import UserList, copy, random, re, string, sys, types
