@@ -5,7 +5,7 @@
 # See the end of this file for the free software, open source license (BSD-style).
 
 # CVS:
-__cvsid = '$Id: mtgspoiler.py,v 1.7 2002/03/21 18:40:29 zooko Exp $'
+__cvsid = '$Id: mtgspoiler.py,v 1.8 2002/06/09 12:11:10 zooko Exp $'
 
 # HOWTO:
 # 1. Get pyutil from `http://sf.net/projects/pyutil'.
@@ -50,7 +50,7 @@ import dictutil
 import VersionNumber
 
 # major, minor, micro (== bugfix release), nano (== not-publically-visible patchlevel), flag (== not-publically-visible UNSTABLE or STABLE flag)
-versionobj = VersionNumber.VersionNumber(string.join(map(str, (0, 0, 7, 0,)), '.') + '-' + 'UNSTABLE')
+versionobj = VersionNumber.VersionNumber(string.join(map(str, (0, 0, 7, 1,)), '.') + '-' + 'UNSTABLE')
 
 true = 1
 false = 0
@@ -286,7 +286,7 @@ class Card(dictutil.UtilDict):
 
         return res
 
-DOUBLE_CARD_NAME_RE=re.compile("(.*)/(.*) \(.*\)")
+DOUBLE_CARD_NAME_RE=re.compile("(.*)/(.*) \((.*)\)")
 LAND_TYPE_AND_CLASS_RE=re.compile("(?<![Ee]nchant )[Ll]and")
 CREATURE_TYPE_AND_CLASS_RE=re.compile("(?<![Ee]nchant )[Cc]reature")
 ENCHANTMENT_TYPE_AND_CLASS_RE=re.compile("[Ee]nchant")
@@ -384,9 +384,21 @@ class DB(dictutil.UtilDict):
 
         self.filter_out("Card Text", ro)
     
+    def filter_in_affects_color(self, colors="BGRUW"):
+        """
+        Removes all cards which do not mention colors by name (i.e. "white", not "W" nor "[W]", which both denote mana).
+        """
+        r = "([^A-Z]|^)((non)?" + COLOR_NAME_MAP[colors[0]]
+        for color in colors[1:]:
+            r += "|" + COLOR_NAME_MAP[color]
+        r += ")([^A-Z]|$)"
+        ro = re.compile(r, re.IGNORECASE)
+
+        self.filter_in("Card Text", ro)
+
     def filter_in_affects_color_or_basic_land(self, colors="BGRUW"):
         """
-        Removes all cards which do not mention colors by name (i.e. "white", not "W" nor "[W]", which both denote mana) nor the associated basic land (i.e. "Plains").
+        Removes all cards which do not mention either colors by name (i.e. "white", not "W" nor "[W]", which both denote mana) or the associated basic land (i.e. "Plains").
         """
         r = "([^A-Z]|^)((non)?" + COLOR_NAME_MAP[colors[0]] + "|" + COLOR_BASICLAND_MAP[colors[0]] + "s?"
         for color in colors[1:]:
@@ -459,6 +471,7 @@ class DB(dictutil.UtilDict):
         This reads in a spoiler list in Wizards of the Coast text format and populates `self.data'.
         """
         f = open(fname, 'r')
+        id2cs = dictutil.UtilDict() # k: tuple of (set name, card number,), v: list of card objects
         setname = None
         incard = false
         thiscard = None
@@ -486,7 +499,9 @@ class DB(dictutil.UtilDict):
                 else:
                     thiskey = UPDATE_NAMES.get(thiskey, thiskey)
                     if thiskey == "Card Name":
-                        self.data[thisval.strip()] = thiscard
+                        thisval = thisval.strip()
+                        thisval = string.replace(thisval, '\xc6', 'AE')
+                        self.data[thisval] = thiscard
                     elif thiskey == "Pow/Tou":
                         if thisval.strip().lower() == "n/a":
                             thisval = ""
@@ -522,26 +537,37 @@ class DB(dictutil.UtilDict):
                     thiskey = line[:sepindex].strip()
                     thisval = line[sepindex+1:].strip()
                 if thiskey == "Card #":
+                    id2cs.setdefault((thiscard['Set Name'], thisval,), []).append(thiscard)
                     incard = false
                     thiscard[thiskey] = thisval
             elif (not setname) and (line.find("Spoiler") != -1):
                 setname = line[:line.find("Spoiler")-1]
 
-        # Okay now merge any "double cards" into a single entry. (and also fix up any obsolete or inconsistent bits)
-        for c in self.cards():
-            c._update()
+        # Okay now fix up any obsolete or inconsistent bits.
+        map(Card._update, self.cards())
 
-            mo = DOUBLE_CARD_NAME_RE.match(c["Card Name"])
-            if mo is not None:
-                subone, subtwo = mo.groups()
-                newname = subone + "/" + subtwo
-                if self.has_key(newname):
-                    continue # already did this one
-                onename = newname + " (" + subone + ")"
-                twoname = newname + " (" + subtwo + ")"
-                assert (onename == c["Card Name"]) or (twoname == c["Card Name"])
-                one = self[onename]
-                two = self[twoname]
+        # Okay now merge any "double cards" into a single entry.
+        for ((setname, cardnum,), cs,) in id2cs.items():
+            if len(cs) > 1:
+                assert len(cs) == 2, "len(cs): %s, cs: %s" % (len(cs), cs,)
+                
+                one = cs[0]
+                two = cs[1]
+                subone, subtwo = one['Card Name'], two['Card Name']
+                for thiscard in (one, two,):
+                    thiscard['This Card Name'] = thiscard['Card Name']
+                    mo = DOUBLE_CARD_NAME_RE.match(thiscard['Card Name'])
+                    if mo is not None:
+                        subone, subtwo, thisone = mo.groups()
+                        thiscard['This Card Name'] = thisone
+
+                if subone != one['This Card Name']:
+                    temp = one
+                    one = two
+                    two = temp
+
+                newname = one['This Card Name'] + "/" + two['This Card Name']
+                assert not self.has_key(newname), "newname: %s" % newname
 
                 newc = Card(one)
                 newc["Card Name"] = newname
@@ -556,11 +582,12 @@ class DB(dictutil.UtilDict):
                     if one.has_key("Card Text"):
                         newc["Card Text"] = one["Card Text"]
                 else:
-                    newc["Card Text"] = subone + " -- " + one.get("Card Text",'') + "\n" + subtwo + " -- " + two.get("Card Text",'')
+                    newc["Card Text"] = one['This Card Name'] + " -- " + one.get("Card Text",'') + "\n" + two['This Card Name'] + " -- " + two.get("Card Text",'')
 
+                del self[one['Card Name']]
+                del self[two['Card Name']]
+                del newc['This Card Name']
                 self[newname] = newc
-                del self[onename]
-                del self[twoname]
 
     def export_list(self, fname):
         return self.export_list_new_and_slow(fname)
