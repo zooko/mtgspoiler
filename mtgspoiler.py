@@ -5,7 +5,7 @@
 # See the end of this file for the free software, open source license (BSD-style).
 
 # CVS:
-__cvsid = '$Id: mtgspoiler.py,v 1.24 2003/01/22 01:57:55 zooko Exp $'
+__cvsid = '$Id: mtgspoiler.py,v 1.25 2003/01/23 01:04:52 zooko Exp $'
 
 # HOWTO:
 # 1. Get pyutil_new from `http://sf.net/projects/pyutil'.
@@ -227,6 +227,7 @@ class Card(dictutil.UtilDict):
             if self.has_key(old):
                 self[new] = self[old]
                 del self[old]
+        assert self.has_key('Rarity'), "self.data: %s" % `self.data`
         mo = RARITY_RE.match(self['Rarity'])
         assert mo is not None, { 'Rarity': self['Rarity'], 'self': self, }
         self['Rarity'] = UPDATE_RARITIES[mo.group(1)] + (mo.group(2) or "")
@@ -449,6 +450,26 @@ UL_CARDNUM_RE_STR="([0-9]*)/([0-9]*)\s*"
 
 URZAS_LEGACY_CARD_RE=re.compile("^" + UL_CARDNAME_RE_STR + "\n" + "(?:" + UL_MANACOST_RE_STR + "\n)?" + UL_TYPECLASS_RE_STR + "\n" + UL_RARITY_RE_STR + "\n" + "(?:" + UL_POWTUF_RE_STR + "\n)?" + UL_CARDTEXT_RE_STR + "\n" + UL_ARTIST_RE_STR + "\n" + UL_CARDNUM_RE_STR, re.MULTILINE + re.DOTALL)
 
+SQUOTED_RE=re.compile("^'(.*)'$")
+DQUOTED_RE=re.compile('^"(.*)"$')
+
+def strip_whitespace_and_quotes(l):
+    """
+    @returns: l, minus any leading and trailing combination of whitespace and
+        matched pairs of quotation characters: "'" or '"'
+    """
+    oldl = None
+    while oldl != l:
+        oldl = l
+        l = l.strip()
+        mo = SQUOTED_RE.match(l)
+        if mo:
+            l = mo.group(1)
+        mo = DQUOTED_RE.match(l)
+        if mo:
+            l = mo.group(1)
+    return l
+
 class DB(dictutil.UtilDict):
     def __init__(self, initialdata={}, importfile=None):
         # k: cardname, v: {}
@@ -627,28 +648,29 @@ class DB(dictutil.UtilDict):
         return self.values()
 
     def _process_key_and_val(self, thiskey, thisval, thiscard):
+        thisval = strip_whitespace_and_quotes(thisval)
         thiskey = UPDATE_NAMES.get(thiskey, thiskey)
         if thiskey == "Card Name":
-            thisval = _fixnames(thisval.strip())
+            thisval = _fixnames(thisval)
             self.data[thisval] = thiscard
         elif thiskey == "Pow/Tou":
-            if thisval.strip().lower() == "n/a":
+            if thisval.lower() == "n/a":
                 thisval = ""
             if thisval.find('/') != -1:
                 try:
-                    thiscard['Pow'] = int(thisval[:thisval.find('/')].strip())
+                    thiscard['Pow'] = int(thisval[:thisval.find('/')])
                 except ValueError:
                     # Oh, this must be a "special" Pow.
-                    thiscard['Pow'] = thisval[:thisval.find('/')].strip()
+                    thiscard['Pow'] = thisval[:thisval.find('/')]
                 try:
-                    thiscard['Tou'] = int(thisval[thisval.find('/')+1:].strip())
+                    thiscard['Tou'] = int(thisval[thisval.find('/')+1:])
                 except ValueError:
                     # Oh, this must be a "special" Tou.
-                    thiscard['Tou'] = thisval[thisval.find('/')+1:].strip()
+                    thiscard['Tou'] = thisval[thisval.find('/')+1:]
 
         if thiskey:
-            thiscard[thiskey] = thisval.strip()
-            # assert not ((thiskey == "Mana Cost") and (thisval.strip().find("and") != -1)), "thiscard.data: %s, thiskey: %s, thisval: %s" % (thiscard.data, thiskey, thisval,) # we fix this in "_update()".
+            thiscard[thiskey] = thisval
+            # assert not ((thiskey == "Mana Cost") and (strip_whitespace_and_quotes(thisval).find("and") != -1)), "thiscard.data: %s, thiskey: %s, thisval: %s" % (thiscard.data, thiskey, thisval,) # we fix this in "_update()".
         
     def _find_missing_names(self, fname):
         f = open(fname, 'r')
@@ -705,7 +727,7 @@ class DB(dictutil.UtilDict):
 
     def import_list(self, fname):
         """
-        This reads in a spoiler list in Wizards of the Coast text format and populates `self.data'.
+        This reads in a spoiler list in any currently known Wizards of the Coast text format and populates self.data.
         """
         f = open(fname, 'r')
         id2cs = dictutil.UtilDict() # k: tuple of (set name, card number,), v: list of card objects
@@ -734,10 +756,10 @@ class DB(dictutil.UtilDict):
                     if thiskey == 'Rarity':
                         incard = false
                         thiscard[thiskey] = thisval
-                elif (line[0] in string.whitespace) or ((line.find(":") == -1) and (line.find("\t") == -1) and (line.find("  ") == -1) and ((thisval and len(thisval) > 50) or (thiskey == 'Flavor Text') or ((line[0] in string.ascii_uppercase) and (thiskey == 'Card Text')))):
+                elif (line[0] in string.whitespace) or ((line.find(":") == -1) and (line.find("\t") == -1) and (line.find("  ") == -1) and ((thisval and len(thisval) > 50) or (thiskey == 'Flavor Text') or ((line[0] in string.ascii_uppercase) and (thiskey == 'Card Text')))) or (thisval and (thisval.strip()[0] == '"') and (thisval.strip()[-1] != '"') and (thiskey == 'Card Text')):
                     # Some spoiler lists have typos in which continued lines don't start with white space.  We'll assume that if this line doesn't have a separator (none of ':', '\t', or '  '), *and* if the previous line was more than 50 chars, that this is one of those typos.
                     # Some spoiler lists have typos in which attributions of quotes start on the line after the quote (in a Flavor Text field) but have no start with white space.  We'll assume that if this line begins with '-', doesn't have a separator (none of ':', '\t', or '  '), *and* if the previous line was a Flavor Text field, then this is one of those typos.
-                    # Some older spoiler lists have linebreaks between lines of Card Text.  We'll assume that if the previous line was a Card Text field, and this line doesn't have a separator (none of ':', '\t', or '  '), *and* if the first character of the line is a capital letter, that this is one of those.
+                    # Some older spoiler lists have linebreaks between lines of Card Text.  We'll assume that if the previous line was a Card Text field, and this line doesn't have a separator (none of ':', '\t', or '  '), *and* if the first character of the line is a capital letter, that this is one of those.  In addition, we'll assume that if the previous line was a Card Text field, and it began with a quote character but didn't end with one, that this is one of those.
                     assert thiskey is not None
                     assert thisval is not None
                     thisval += ' ' + line.strip()
@@ -749,7 +771,7 @@ class DB(dictutil.UtilDict):
                         thisval = None
                     thiskey = 'Card Text'
                     thisval = line
-                elif RARITY_RE.match(line.strip()):
+                elif RARITY_RE.match(strip_whitespace_and_quotes(line)):
                     # Some spoiler lists (e.g. "Gaea's Touch" in the_dark.txt), have typos where the "Rarity:" param name is missing!  We'll assume that if this val matches the RARITY_RE then this is one of those.
                     if thiskey:
                         self._process_key_and_val(thiskey, thisval, thiscard)
@@ -773,7 +795,7 @@ class DB(dictutil.UtilDict):
                         elif (tabindex != -1) and ((tabindex <= twospaceindex) or (twospaceindex == -1)):
                             sepindex = tabindex
                     assert sepindex != -1, "line: %s, line.find('\t'): %s, line.find('  '): %s" % (`line`, line.find('\t'), line.find('  '),)
-                    thiskey = line[:sepindex].strip()
+                    thiskey = strip_whitespace_and_quotes(line[:sepindex])
                     thisval = line[sepindex+1:].strip()
                 if thiskey == "Card #":
                     id2cs.setdefault((thiscard['Set Name'], thisval,), []).append(thiscard)
@@ -916,7 +938,7 @@ class Library(UserList.UserList):
             if mo is not None:
                 numstr, name = mo.groups()
                 assert type(numstr) is types.StringType, "numstr: %s :: %s, name: %s, mo.groups(): %s" % (numstr, type(numstr), name, mo.groups(),)
-                if numstr.strip():
+                if strip_whitespace_and_quotes(numstr):
                     num = int(numstr)
                 else:
                     num = 1
@@ -1129,13 +1151,13 @@ def testmana(tdeck, iters=2**10):
 code.interact("mtgspoiler", None, locals())
 
 __setupstr="""
-SEED=61
+SEED=64
 MYDECK="mine/W_clerics.deck"
 HISDECK="others/psych-pt-chicago-2003.deck"
 deck.import_list(MYDECK)
 hisdeck.import_list(HISDECK)
 deck.shuffle(SEED)
-hisdeck.shuffle(SEED)
+hisdeck.shuffle(SEED+1)
 randutil.randrange(0, 2)
 h=hand
 ip=iplay
