@@ -1,11 +1,11 @@
 #!/usr/bin/env python
 #
-# Copyright (c) 2002 Bryce "Zooko" Wilcox-O'Hearn
+# Copyright (c) 2002,2003 Bryce "Zooko" Wilcox-O'Hearn
 # mailto:zooko@zooko.com
 # See the end of this file for the free software, open source license (BSD-style).
 
 # CVS:
-__cvsid = '$Id: mtgspoiler.py,v 1.25 2003/01/23 01:04:52 zooko Exp $'
+__cvsid = '$Id: mtgspoiler.py,v 1.26 2003/01/24 04:46:00 zooko Exp $'
 
 # HOWTO:
 # 1. Get pyutil_new from `http://sf.net/projects/pyutil'.
@@ -84,30 +84,61 @@ COLOR_BASICLAND_MAP = {
     'W': 'Plains',
     }
 
+# used for find_magic_cards URLs
 SET_NAME_ABBREV_MAP = { # incomplete
-    'Torment': 'TR',
-    'Onslaught': 'ON',
-    'Seventh Edition': '7E',
-    'Odyssey': 'OD',
-    'Judgment': 'JU',
-    'Invasion': 'IN',
-    'Planeshift': 'PL',
-    'Apocalypse': 'AP',
-    'Homelands': 'HL',
-    "Urza's Legacy": 'UL',
-    "Mirage": 'MR',
-    "Tempest": 'TP',
-    "Urza's Saga": 'US',
-    "Alpha/Beta/Unlimited": 'UN',
-    "Revised": 'RV',
-    "Judgment": 'JU',
-    "Disrupt": 'WL',
-    "Nemesis": 'NE',
-    "Alliances": 'AL',
-    "Mercadian Masques": 'MM',
-    "Prophecy": 'PR',
-    "Seventh Edition": '7E',
-    "Arabian Nights": 'AN',
+    "Onslaught": "ON",
+    "Judgment": "JU",
+    "Torment": "TR",
+    "Odyssey": "OD",
+    "Apocalypse": "AP",
+    "Planeshift": "PS",
+    "Invasion": "IN",
+    "7th Edition": "7E",
+    "Seventh Edition": "7E",
+    "Prophecy": "PR",
+    "Nemesis": "NE",
+    "Mercadian Masques": "MM",
+    "Urza's Destiny": "UD",
+    "Urza's Legacy": "UL",
+    "Urza's Saga": "US",
+    "Classic 6th Edition": "6E",
+    "Classic Sixth Edition": "6E",
+    "Classic Sixth": "6E",
+    "Exodus": "EX",
+    "Stronghold": "SH",
+    "Tempest": "TP",
+    "Weatherlight": "WL",
+    "5th Edition": "5E",
+    "5th": "5E",
+    "Fifth Edition": "5E",
+    "Visions": "VI",
+    "Mirage": "MR",
+    "Alliances": "AL",
+    "Homelands": "HL",
+    "Chronicles": "CH",
+    "Ice Age": "IA",
+    "4th Edition": "4E",
+    "4th": "4E",
+    "Fourth Edition": "4E",
+    "Fallen Empires": "FE",
+    "The Dark": "DK",
+    "Legends": "LG",
+    "Revised": "RV",
+    "Revised (3rd Edition)": "RV",
+    "Antiquities": "AQ",
+    "Arabian Nights": "AN",
+    "Alpha/Beta/Unlimited": "UN",
+    "Unlimited": "UN",
+    "Beta": "B",
+    "Alpha": "A",
+    "Promotional Cards": "P",
+    "Tokens": "TO",
+    "Vanguard": "VG",
+    "Anthologies": "AT",
+    "Unglued": "UG",
+    "Portal Three Kingdoms": "P3K",
+    "Portal Second Age": "PO2",
+    "Portal": "PO",
     }
 
 def findmagiccards_url(c):
@@ -131,14 +162,14 @@ def findmagiccards_price(c):
             return None
         return mo.group(1)
     except exceptions.StandardError, le:
-        raise exceptions.StandardError, { 'cause': le, 'page': page, 'mo': mo, 'mo.group(0)': (mo is not None) and mo.group(0), }
-   
+        raise exceptions.StandardError, { 'cause': humanreadable.hr(le), 'c': c, 'page': page, 'mo': mo, 'mo.group(0)': (mo is not None) and mo.group(0), }
+
 def cmppow(x, y):
     if x.get('Pow') and y.get('Pow'):
         return cmp(x['Pow'], y['Pow'])
     else:
         return cmp(x, y)
-     
+
 def cmpDOLLARPRICE(x, y):
     if x['DOLLARPRICE'] and y['DOLLARPRICE']:
         return cmp(float(x['DOLLARPRICE']), float(y['DOLLARPRICE']))
@@ -302,7 +333,7 @@ class Card(dictutil.UtilDict):
 
     def is_instant(self):
         return INSTANT_TYPE_AND_CLASS_RE.search(self["Type & Class"]) or INSTANT_CARD_TEXT_RE.search(self["Card Text"])
-        
+
     def full_print(self):
         """
         @returns a string containing the full "spoiler" form
@@ -412,7 +443,7 @@ class Card(dictutil.UtilDict):
             ks.remove('Card Color')
         except exceptions.StandardError, le:
             raise exceptions.StandardError, { 'problem': 'Card Color not found.', 'cause': le, 'self': self, }
-        
+
         if includecardnumber:
             res += self['Card #'] + '\n'
         if 'Card #' in ks:
@@ -425,7 +456,7 @@ class Card(dictutil.UtilDict):
         return res
 
 CARDS_TOTAL_RE=re.compile("([1-9][0-9]*) Cards? Total", re.IGNORECASE)
-SPOILER_NAME_RE=re.compile("(.*?) (Spoiler|Spoiler List|Card Spoiler List|Edition Card List|Card List)$", re.IGNORECASE)
+SPOILER_NAME_RE=re.compile("(.*?) (Spoiler|Spoiler List|Card Spoiler List|Edition Card List|Card List|Checklist)$", re.IGNORECASE)
 
 CARDNAME_K_VERSIONS_RE_STR="(.*?)( (\(([2-9][0-9]*) ?versions\)))?\s*$"
 CARDNAME_K_VERSIONS_RE=re.compile(CARDNAME_K_VERSIONS_RE_STR, re.IGNORECASE)
@@ -449,6 +480,9 @@ UL_ARTIST_RE_STR="Illus. (.*?)\s*"
 UL_CARDNUM_RE_STR="([0-9]*)/([0-9]*)\s*"
 
 URZAS_LEGACY_CARD_RE=re.compile("^" + UL_CARDNAME_RE_STR + "\n" + "(?:" + UL_MANACOST_RE_STR + "\n)?" + UL_TYPECLASS_RE_STR + "\n" + UL_RARITY_RE_STR + "\n" + "(?:" + UL_POWTUF_RE_STR + "\n)?" + UL_CARDTEXT_RE_STR + "\n" + UL_ARTIST_RE_STR + "\n" + UL_CARDNUM_RE_STR, re.MULTILINE + re.DOTALL)
+
+LE_PRE_RARITY_RE_STR="(Rare|Uncommon|Common)\s*"
+LEGIONS_PRE_CARD_RE=re.compile("^" + UL_CARDNAME_RE_STR + "\n" + "(?:" + UL_MANACOST_RE_STR + "\n)?" + UL_TYPECLASS_RE_STR + "\n" + "(?:" + UL_POWTUF_RE_STR + "\n)?" + "(?:" + UL_CARDTEXT_RE_STR + ")?" + LE_PRE_RARITY_RE_STR, re.MULTILINE + re.DOTALL)
 
 SQUOTED_RE=re.compile("^'(.*)'$")
 DQUOTED_RE=re.compile('^"(.*)"$')
@@ -671,7 +705,7 @@ class DB(dictutil.UtilDict):
         if thiskey:
             thiscard[thiskey] = thisval
             # assert not ((thiskey == "Mana Cost") and (strip_whitespace_and_quotes(thisval).find("and") != -1)), "thiscard.data: %s, thiskey: %s, thisval: %s" % (thiscard.data, thiskey, thisval,) # we fix this in "_update()".
-        
+
     def _find_missing_names(self, fname):
         f = open(fname, 'r')
         names = dictutil.NumDict()
@@ -692,6 +726,36 @@ class DB(dictutil.UtilDict):
         for name in names.keys():
             if not self.data.has_key(name):
                 print "%s in file and not in db" % name
+
+    def import_legions_unofficial_prerelease_spoiler(self, fname):
+        """
+        This reads in a spoiler list in the format of the unofficial prerelease Legions text format and populates `self.data'.
+        """
+        setname = "Legions"
+        s = open(fname, 'r').read()
+        index = s.find("Akroma's Devoted")
+        assert index != -1
+        mo = LEGIONS_PRE_CARD_RE.search(s, index)
+        while mo:
+            thiscard = Card()
+            thiscard['Set Name'] = setname
+            self._process_key_and_val('Card Name', mo.group(1), thiscard)
+            if mo.group(2) is not None:
+                self._process_key_and_val('Casting Cost', mo.group(2), thiscard)
+            self._process_key_and_val('Card Type', mo.group(3), thiscard)
+            if mo.group(4) is not None:
+                self._process_key_and_val('Pow/Tou', mo.group(4), thiscard)
+            self._process_key_and_val('Card Text', mo.group(5), thiscard)
+            self._process_key_and_val('Card Rarity', mo.group(6), thiscard)
+
+            if thiscard.colors():
+                self._process_key_and_val('Card Color', thiscard.colors(), thiscard)
+            elif thiscard.is_artifact():
+                self._process_key_and_val('Card Color', 'Artifact', thiscard)
+            elif thiscard.is_land():
+                self._process_key_and_val('Card Color', 'L', thiscard)
+
+            mo = LEGIONS_PRE_CARD_RE.search(s, mo.end())
 
     def import_urzas_legacy_spoiler(self, fname):
         """
@@ -813,8 +877,10 @@ class DB(dictutil.UtilDict):
 
         if setname == "Urza's Legacy":
             # whoops -- this one is in a completely different format.
-            # assert len(self.cards()) == 0 # only true if this is the first spoiler list we have loaded
             self.import_urzas_legacy_spoiler(fname)
+        elif setname == "Legions":
+            # whoops -- this one is in a completely different format.
+            self.import_legions_unofficial_prerelease_spoiler(fname)
 
         # Okay now fix up any obsolete or inconsistent bits.
         map(Card._update, self.cards())
@@ -823,7 +889,7 @@ class DB(dictutil.UtilDict):
         for ((setname, cardnum,), cs,) in id2cs.items():
             if len(cs) > 1:
                 assert len(cs) == 2, "len(cs): %s, cs: %s" % (len(cs), cs,)
-                
+
                 one = cs[0]
                 two = cs[1]
                 subone, subtwo = one['Card Name'], two['Card Name']
@@ -932,7 +998,7 @@ class Library(UserList.UserList):
         This reads in the cards from a file in a "deck listing" format.
         """
         f = open(fname, 'r')
-        
+
         for line in f.xreadlines():
             mo = LIB_RE.match(line)
             if mo is not None:
@@ -970,7 +1036,7 @@ class Library(UserList.UserList):
         spells.reverse()
         lands = ld.items_sorted_by_value()
         lands.reverse()
-            
+
         f = open(fname, "w")
         for cn, n in creatures:
             f.write(str(n) + " " + cn + "\n")
@@ -1148,12 +1214,52 @@ def testmana(tdeck, iters=2**10):
 
     print "ave in 10 cards: %0.1f, chance <= 0 in 10 cards: %0.2f, chance <= 1 in 10 cards: %0.2f, chance <= 2 in 10 cards: %0.2f, chance >= 2 in 10 cards: %0.2f, chance >= 3 in 10 cards: %0.2f, ave in 13 cards: %0.1f, chance >= 4 in 13 cards: %0.2f" % (float(tot10)/r, float(screwle0_10)/r, float(screwle1_10)/r, float(screwle2_10)/r, float(atleast2_10)/r, float(succs10)/r, float(tot13)/r, float(succs13)/r,)
 
+def gen_starter(d):
+    l = Library(db=d)
+    rares = []
+    uncommons = []
+    commons = []
+    for c in d.cards():
+        if c['Rarity'] == 'R':
+            rares.append(c)
+        elif c['Rarity'] == 'U':
+            uncommons.append(c)
+        elif c['Rarity'] == 'C':
+            commons.append(c)
+    for i in range(3):
+        l.append(randutil.choice(rares))
+    for i in range(10):
+        l.append(randutil.choice(uncommons))
+    for i in range(32):
+        l.append(randutil.choice(commons))
+    return l
+    
+def gen_booster(d):
+    l = Library(db=d)
+    rares = []
+    uncommons = []
+    commons = []
+    for c in d.cards():
+        if c['Rarity'] == 'R':
+            rares.append(c)
+        elif c['Rarity'] == 'U':
+            uncommons.append(c)
+        elif c['Rarity'] == 'C':
+            commons.append(c)
+    for i in range(1):
+        l.append(randutil.choice(rares))
+    for i in range(3):
+        l.append(randutil.choice(uncommons))
+    for i in range(11):
+        l.append(randutil.choice(commons))
+    return l
+    
 code.interact("mtgspoiler", None, locals())
 
 __setupstr="""
-SEED=64
+SEED=71
 MYDECK="mine/W_clerics.deck"
-HISDECK="others/psych-pt-chicago-2003.deck"
+HISDECK="others/pt-chicago-masters-1st-squirrel-opp.deck"
 deck.import_list(MYDECK)
 hisdeck.import_list(HISDECK)
 deck.shuffle(SEED)
@@ -1178,7 +1284,8 @@ for i in range(7):
 
 """
 
-# Copyright (c) 2002 Bryce "Zooko" Wilcox-O'Hearn
+
+# Copyright (c) 2002,2003 Bryce "Zooko" Wilcox-O'Hearn
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software to deal in this software without restriction, including
 # without limitation the rights to use, copy, modify, merge, publish,
