@@ -5,7 +5,7 @@
 # See the end of this file for the free software, open source license (BSD-style).
 
 # CVS:
-__cvsid = '$Id: mtgspoiler.py,v 1.6 2002/03/13 15:02:28 zooko Exp $'
+__cvsid = '$Id: mtgspoiler.py,v 1.7 2002/03/21 18:40:29 zooko Exp $'
 
 # HOWTO:
 # 1. Get pyutil from `http://sf.net/projects/pyutil'.
@@ -39,9 +39,10 @@ __cvsid = '$Id: mtgspoiler.py,v 1.6 2002/03/13 15:02:28 zooko Exp $'
 
 # TODO:
 # * import "Oracle" errata and apply them...
+# * merge double cards via number and not name (ap_spoiler doesn't have double-card names...)
 
 # standard modules
-import UserList, code, copy, random, re, string, sys, types
+import UserList, code, copy, operator, random, re, string, sys, types
 
 # pyutil modules (http://sf.net/projects/pyutil)
 import strutil
@@ -49,7 +50,7 @@ import dictutil
 import VersionNumber
 
 # major, minor, micro (== bugfix release), nano (== not-publically-visible patchlevel), flag (== not-publically-visible UNSTABLE or STABLE flag)
-versionobj = VersionNumber.VersionNumber(string.join(map(str, (0, 0, 6, 0,)), '.') + '-' + 'UNSTABLE')
+versionobj = VersionNumber.VersionNumber(string.join(map(str, (0, 0, 7, 0,)), '.') + '-' + 'UNSTABLE')
 
 true = 1
 false = 0
@@ -99,7 +100,11 @@ def cmpmanacost(x, y):
     yc = 0
     for c in y.colored_mana_cost():
         yc += colorscarcity[c]
-    return cmp(xc, yc)
+    res = cmp(xc, yc)
+    if res != 0:
+        return res
+    # Oh well, just for prettiness when looking at listings, let's sort by name.
+    return cmp(x["Card Name"], y["Card Name"])
 
 UPDATE_NAMES={
     "Card Title": "Card Name",
@@ -166,6 +171,18 @@ class Card(dictutil.UtilDict):
     def is_land(self):
         return LAND_TYPE_AND_CLASS_RE.search(self["Type & Class"])
 
+    def is_enchantment(self):
+        return ENCHANTMENT_TYPE_AND_CLASS_RE.search(self["Type & Class"])
+
+    def is_artifact(self):
+        return ARTIFACT_TYPE_AND_CLASS_RE.search(self["Type & Class"])
+
+    def is_permanent(self):
+        return self.is_land() or self.is_artifact() or self.is_creature() or self.is_enchantment()
+
+    def is_instant(self):
+        return INSTANT_TYPE_AND_CLASS_RE.search(self["Type & Class"]) or INSTANT_CARD_TEXT_RE.search(self["Card Text"])
+        
     def full_print(self):
         """
         @returns a string containing the full "spoiler" form
@@ -272,6 +289,10 @@ class Card(dictutil.UtilDict):
 DOUBLE_CARD_NAME_RE=re.compile("(.*)/(.*) \(.*\)")
 LAND_TYPE_AND_CLASS_RE=re.compile("(?<![Ee]nchant )[Ll]and")
 CREATURE_TYPE_AND_CLASS_RE=re.compile("(?<![Ee]nchant )[Cc]reature")
+ENCHANTMENT_TYPE_AND_CLASS_RE=re.compile("[Ee]nchant")
+ARTIFACT_TYPE_AND_CLASS_RE=re.compile("(?<![Ee]nchant )[Aa]rtifact")
+INSTANT_TYPE_AND_CLASS_RE=re.compile("[Ii]nstant|[Ii]nterrupt")
+INSTANT_CARD_TEXT_RE=re.compile("[Yy]ou may play .* any time you could play an instant")
 
 class DB(dictutil.UtilDict):
     def __init__(self, initialdata={}, importfile=None):
@@ -592,17 +613,20 @@ class DB(dictutil.UtilDict):
         for c in self.cards():
             writecard(f, c)
 
-LIB_RE=re.compile("\s*([0-9]*)\s*[Xx]?\s*(\S+.*)")
+LIB_RE=re.compile("\s*([0-9]*)\s*[Xx]?\s*([^ \t\n\r\f\v#]+(?: ?[^\r\n #]+)*)")
 
 class Library(UserList.UserList):
-    def __init__(self, db, initialdata=()):
+    def __init__(self, initialdata=(), db=None):
         """
         @param db a DB() instance which must contain definitions for all the cards used
         """
         self.db = db
-        self.data = []
-        self.data.extend(initialdata)
-        pass
+        UserList.UserList.__init__(self, initialdata)
+
+    def copy(self):
+        res = Library(db=self.db)
+        res.extend(self)
+        return res
 
     def cards(self):
         return self.data[:]
@@ -613,7 +637,9 @@ class Library(UserList.UserList):
     def __str__(self):
         return string.join(map(lambda x: x["Card Name"], self), ", ")
 
-    def shuffle(self):
+    def shuffle(self, seed=None):
+        if seed is not None:
+            random.seed(seed)
         random.shuffle(self.data)
 
     def import_list(self, fname):
@@ -632,7 +658,7 @@ class Library(UserList.UserList):
                 else:
                     num = 1
                 for i in range(num):
-                    assert self.db.has_key(name), "name: %s" % name
+                    assert self.db.has_key(name), "name: %s" % `name`
                     self.append(self.db[name])
 
     def export_list(self, fname):
@@ -677,6 +703,150 @@ d = DB()
 # print "sys.argv: ", sys.argv
 for arg in sys.argv[1:]:
     d.import_list(arg)
+
+def sort_board(b):
+    ls = []
+    cs = []
+    os = []
+    for c in b:
+        if c.is_land():
+            ls.append(c)
+        elif c.is_creature():
+            cs.append(c)
+        else:
+            os.append(c)
+    ls.sort(cmpmanacost)
+    cs.sort(cmpmanacost)
+    os.sort(cmpmanacost)
+    b2=ls + cs + os
+    del b[:]
+    b.extend(b2)
+
+deck = Library(db=d)
+hisdeck = Library(db=d)
+hand = Library(db=d)
+hishand = Library(db=d)
+board = Library(db=d)
+hisboard = Library(db=d)
+grave = Library(db=d)
+hisgrave = Library(db=d)
+life = 20
+hislife = 20
+
+def _play(board, hand, grave, i=-1):
+    c = hand.pop(i)
+    print c["Card Name"]
+    if not c.is_permanent():
+        grave.append(c)
+    else:
+        board.append(c)
+        sort_board(board)
+
+def iplay(i=-1):
+    return _play(board, hand, grave, i)
+
+def hisplay(i=-1):
+    return _play(hisboard, hishand, hisgrave, i)
+
+def _draw(hand, deck):
+    c = deck.pop(0)
+    print c["Card Name"]
+    hand.append(c)
+
+def idraw():
+    return _draw(hand, deck)
+
+def hisdraw():
+    return _draw(hishand, hisdeck)
+
+def s():
+    print "board: ", board
+    print "hisboard: ", board
+    print "hand: ", board
+    print "hishand: ", board
+
+import random
+PAY_1_MANA_RE=re.compile("1, TAP:.*add ((one|two|three|four|X).* mana|2|1[BGRUW]|[BGRUW][BGRUW])( or ((one|two|three|four|X).* mana|2|1[BGRUW]|[BGRUW][BGRUW]))? to your mana pool", re.IGNORECASE)
+MANA_RE=re.compile("(?<![1-9BGRUW], )TAP:.*add ([1BGRUW]|(one|two|three|four|X).* mana)( or ([1BGRUW]|(one|two|three|four|X).* mana))? to your mana pool|^\[[BGRUW]\]$", re.IGNORECASE)
+SLOW_RE=re.compile("comes into play tapped", re.IGNORECASE)
+DEPENDS_RE=re.compile("Play this ability only if you control a ([A-Z]*)", re.IGNORECASE)
+
+def _measuremana(tdeck, n):
+    m=0
+    for c in tdeck[:(n-1)]:
+        if MANA_RE.search(c["Card Text"]):
+            # print "MANA_RE: ", c["Card Name"]
+            m+=1
+    c = tdeck[n-1]
+    if MANA_RE.search(c["Card Text"]) and not SLOW_RE.search(c["Card Text"]) and not c.is_creature():
+        # print "last MANA_RE: ", c["Card Name"]
+        mo = DEPENDS_RE.search(c["Card Text"])
+        if mo:
+            if len(filter(lambda x, mo=mo: x["Card Name"].lower() == mo.group(1), tdeck[:n])) > 0:
+                m+=1
+        else:
+            m+=1
+    for c in tdeck[:n]:
+        if PAY_1_MANA_RE.search(c["Card Text"]):
+            # print "PAY_1_MANA_RE: ", c["Card Name"]
+            mo = DEPENDS_RE.search(c["Card Text"])
+            if mo:
+                if len(filter(lambda x, mo=mo: x["Card Name"].lower() == mo.group(1), tdeck[:n])) > 0:
+                    if m>=1:
+                        m+=1
+            else:
+                if m>=1:
+                    m+=1
+    for c in tdeck[:n]:
+        if c["Card Name"] == "Cabal Coffers":
+            # print "Cabal Coffers: ", c["Card Name"]
+            mo = DEPENDS_RE.search(c["Card Text"])
+            if mo:
+                if len(filter(lambda x, mo=mo: x["Card Name"].lower() == mo.group(1), tdeck[:n])) > 0:
+                    if m>=2:
+                        m+=1
+            else:
+                if m>=2:
+                    m+=max(len(filter(lambda c: c["Card Name"] == "Swamp", tdeck[:n]))-2,0)
+    return m
+
+def _screwage(tdeck, turn=0, draw=0):
+    return len(filter(lambda c: c.converted_mana_cost() > min(_measuremana(tdeck, turn+7+draw), turn), tdeck[:turn+7+draw]))
+
+def measure_screwage(tdeck, turns=6, draw=0):
+    for t in range(turns):
+        print "turn %s, screwage %s" % (t, _screwage(tdeck, t, draw),)
+
+def sum_screwage(tdeck, maxturns=6, draw=0):
+    return reduce(operator.__add__, map(_screwage, [tdeck]*maxturns, range(maxturns), [draw]*maxturns), 0)
+
+def ave_screwage(tdeck, maxturns=6, draw=0):
+    sum = 0
+    r = 2**5
+    for i in range(r):
+        tdeck.shuffle(i)
+        sum += sum_screwage(tdeck, maxturns, draw)
+    return float(sum) / r
+
+def testmana(tdeck):
+    tot10 = 0
+    tot13 = 0
+    succs10 = 0
+    succs13 = 0
+    r=2**10
+    for i in range(r):
+        tdeck.shuffle(r)
+        res10 = _measuremana(tdeck, 10)
+        tot10 += res10
+        if res10 >= 3:
+            succs10+=1
+        res13 = _measuremana(tdeck, 13)
+        assert res13 >= res10
+        if res13 >= 4:
+            succs13+=1
+        tot13 += res13
+
+    print "ave in 10 cards: %s, chance >= 3 in 10 cards: %s, ave in 13 cards: %s, chance >= 4 in 13 cards: %s" % (float(tot10)/r, float(succs10)/r, float(tot13)/r, float(succs13)/r,)
 
 code.interact("mtgspoiler", None, locals())
 
