@@ -5,36 +5,40 @@
 # See the end of this file for the free software, open source license (BSD-style).
 
 # CVS:
-__cvsid = '$Id: mtgspoiler.py,v 1.8 2002/06/09 12:11:10 zooko Exp $'
+__cvsid = '$Id: mtgspoiler.py,v 1.9 2002/12/16 03:19:15 zooko Exp $'
 
 # HOWTO:
-# 1. Get pyutil from `http://sf.net/projects/pyutil'.
+# 1. Get pyutil_new from `http://sf.net/projects/pyutil'.
 # 2. Get mtgspoiler from `http://sf.net/projects/mtgspoiler'.
 # 3. Get spoiler lists from `http://www.wizards.com/default.asp?x=magic/products/cardlists,,en'.
-# 4. Run this command line:
-# /path/to/pyutil/pstart /path/to/mtgspoiler/mtgspoiler.py /path/to/spoiler.txt /path/to/next_spoiler.txt
-# 5. Now you're in a Python interpreter with a local object named `d' containing the spoiler
+# 4. Make sure that your PYTHONPATH environment variable includes the pyutil_new
+#    directory.
+# 5. Change directories into the directory where you keep all the spoiler lists,
+#    and run "mtgspoiler.py ./*".  (Thus instructing your bash shell to pass a
+#    list of the names of the files in this directory to the incoming argument
+#    list of mtgspoiler.py.)
+# 6. Now you're in a Python interpreter with a local object named `d' containing the spoiler
 #    database.  If you haven't already, learn Python from
 #    `http://python.sourceforge.net/devel-docs/tut/tut.html'.  Assuming you are a hacker, this will
 #    take only a couple of hours and can be enjoyably interlaced with the rest of these steps.
-# 6. This Python command prints out all the cards in the database:
+# 7. This Python command prints out all the cards in the database:
 # d
-# 7. This Python command assigns (newly created) local variable `c' to reference the first card in
-# the database:
+# 8. This Python command assigns the (newly created) local variable `c' to
+#    reference the first card in the database:
 # c = d.cards()[0]
-# 8. This one assigns `c' to reference the card named "Granite Grip".
+# 9. This one assigns `c' to reference the card named "Granite Grip".
 # c = d['Granite Grip']
-# 9. This Python command prints out this card:
+# 10. This Python command prints out this card:
 # c
-# 10. This Python command will tell you all the methods that you can invoke on `d':
+# 11. This Python command will tell you all the methods that you can invoke on `d':
 # dir(d)
-# 11. And this one tell you all the methods that you can invoke on `c':
+# 12. And this one tell you all the methods that you can invoke on `c':
 # dir(c)
-# 12. This one removes all cards have colored mana in their casting costs:
+# 13. This one removes all cards have colored mana in their casting costs:
 # d.filter_out_colors()
-# 13. Now here is a cool and complicated one.  You'll have to read the inline docs for what it does.
+# 14. Now here is a cool and complicated one.  You'll have to read the inline docs for what it does.
 # hosers = d.filter_in_useful_for_playing_colors("BU")
-# 14. Okay, now please add features and submit patches.  Thanks!  --Zooko 2002-03-01
+# 15. Okay, now please add features and submit patches.  Thanks!  --Zooko 2002-03-01
 
 
 # TODO:
@@ -42,14 +46,15 @@ __cvsid = '$Id: mtgspoiler.py,v 1.8 2002/06/09 12:11:10 zooko Exp $'
 # * merge double cards via number and not name (ap_spoiler doesn't have double-card names...)
 
 # standard modules
-import UserList, code, copy, operator, random, re, string, sys, types
+import UserList, code, copy, exceptions, operator, re, string, sys, types, urllib
 
 # pyutil modules (http://sf.net/projects/pyutil)
-import strutil
-import dictutil
-import VersionNumber
+from pyutil import strutil
+from pyutil import dictutil
+from pyutil import randutil
+from pyutil import VersionNumber
 
-# major, minor, micro (== bugfix release), nano (== not-publically-visible patchlevel), flag (== not-publically-visible UNSTABLE or STABLE flag)
+# Major, minor, micro (== bugfix release), nano (== not-publically-visible patchlevel), flag (== not-publically-visible UNSTABLE or STABLE flag)
 versionobj = VersionNumber.VersionNumber(string.join(map(str, (0, 0, 7, 1,)), '.') + '-' + 'UNSTABLE')
 
 true = 1
@@ -78,6 +83,35 @@ COLOR_BASICLAND_MAP = {
     'W': 'Plains',
     }
 
+SET_NAME_ABBREV_MAP = { # incomplete
+    'Torment': 'TR',
+    'Onslaught': 'ON',
+    'Seventh Edition': '7E',
+    'Odyssey': 'OD',
+    'Judgment': 'JU',
+    }
+
+def findmagiccards_url(c):
+    """
+    e.g.
+    http://www.findmagiccards.com/Cards/to/Nantuko_Blightcutter.html
+    """
+    return "http://www.findmagiccards.com/Cards/" + SET_NAME_ABBREV_MAP[c['Set Name']] + "/" + c['Card Name'].replace(" ", "_").replace(",", "_") + ".html"
+
+def findmagiccards_page(c):
+    return urllib.urlopen(findmagiccards_url(c)).read()
+
+FMC_PRICE_RE=re.compile("Price :</TD><TD>\$ *([0-9]*.[0-9][0-9])", re.IGNORECASE)
+def findmagiccards_price(c):
+    try:
+        page = findmagiccards_page(c)
+        mo = FMC_PRICE_RE.search(page)
+        if mo is None:
+            return None
+        return mo.group(1)
+    except exceptions.StandardError, le:
+        raise exceptions.StandardError, { 'cause': le, 'page': page, 'mo': mo, 'mo.group(0)': (mo is not None) and mo.group(0), }
+   
 def cmpmanacost(x, y):
     res = cmp(x.converted_mana_cost(), y.converted_mana_cost())
     if res != 0:
@@ -136,6 +170,9 @@ class Card(dictutil.UtilDict):
         if LAND_TYPE_AND_CLASS_RE.search(self["Type & Class"]):
             self.del_if_present("Mana Cost")
 
+    def fetch_latest_price(self):
+        self['DOLLARPRICE'] = findmagiccards_price(self)
+
     def copy(self):
         res = Card()
         for k, v in self.items():
@@ -164,6 +201,13 @@ class Card(dictutil.UtilDict):
         if mc.find("/") != -1:
             mc = mc[:mc.find("/")] # ??? for double-cards.
         return filter(lambda c: c in "BGRUW", mc)
+
+    def colors(self):
+        cs = []
+        for c in self.colored_mana_cost():
+            if not c in cs:
+                cs.append(c)
+        return string.join(cs, '')
 
     def is_creature(self):
         return CREATURE_TYPE_AND_CLASS_RE.search(self["Type & Class"])
@@ -194,7 +238,8 @@ class Card(dictutil.UtilDict):
             if len(k) < 7:
                 s+='\t'
             s+='\t'
-            s+=v
+            if v is not None:
+                s+=v
             s+='\n'
             return s
 
@@ -301,6 +346,10 @@ class DB(dictutil.UtilDict):
         if importfile is not None:
             self.import_list(importfile)
 
+    def fetch_latest_prices(self):
+        for c in self.cards():
+            c.fetch_latest_price()
+
     def copy(self):
         res = DB()
         for k, v in self.items():
@@ -383,7 +432,7 @@ class DB(dictutil.UtilDict):
         ro = re.compile(r, re.IGNORECASE)
 
         self.filter_out("Card Text", ro)
-    
+
     def filter_in_affects_color(self, colors="BGRUW"):
         """
         Removes all cards which do not mention colors by name (i.e. "white", not "W" nor "[W]", which both denote mana).
@@ -491,8 +540,9 @@ class DB(dictutil.UtilDict):
                     thiscard['Set Name'] = setname
             if incard:
                 assert len(line) > 0
-                # some spoiler lists have typos in which continued lines don't start with white space.  We'll assume that if this line doesn't have a separator (none of ':', '\t', or '  '), *and* if the previous line was more than 50 chars, that this is one of those typos.
-                if (line[0] in string.whitespace) or ((line.find(":") == -1) and (line.find("\t") == -1) and (line.find("  ") == -1) and (len(thisval) > 50)):
+                # Some spoiler lists have typos in which continued lines don't start with white space.  We'll assume that if this line doesn't have a separator (none of ':', '\t', or '  '), *and* if the previous line was more than 50 chars, that this is one of those typos.
+                # Some spoiler lists have typos in which attributions of quotes start on the line after the quote (in a Flavor Text field) but have no start with white space.  We'll assume that if this line begins with '-', doesn't have a separator (none of ':', '\t', or '  '), *and* if the previous line a Flavor Text field, then this is one of those typos.
+                if (line[0] in string.whitespace) or ((line.find(":") == -1) and (line.find("\t") == -1) and (line.find("  ") == -1) and ((thisval and len(thisval) > 50) or (thiskey == 'Flavor Text'))):
                     assert thiskey is not None
                     assert thisval is not None
                     thisval += ' ' + line.strip()
@@ -650,6 +700,17 @@ class Library(UserList.UserList):
         self.db = db
         UserList.UserList.__init__(self, initialdata)
 
+    def fetch_latest_prices(self):
+        for c in self.cards():
+            c.fetch_latest_price()
+
+    def total_cost(self):
+        sum = 0
+        for c in self.cards():
+            if c.get('DOLLARPRICE') is not None:
+                sum += float(c.get('DOLLARPRICE'))
+        return sum
+
     def copy(self):
         res = Library(db=self.db)
         res.extend(self)
@@ -666,8 +727,8 @@ class Library(UserList.UserList):
 
     def shuffle(self, seed=None):
         if seed is not None:
-            random.seed(seed)
-        random.shuffle(self.data)
+            randutil.seed(seed)
+        randutil.shuffle(self.data)
 
     def import_list(self, fname):
         """
@@ -792,7 +853,6 @@ def s():
     print "hand: ", board
     print "hishand: ", board
 
-import random
 PAY_1_MANA_RE=re.compile("1, TAP:.*add ((one|two|three|four|X).* mana|2|1[BGRUW]|[BGRUW][BGRUW])( or ((one|two|three|four|X).* mana|2|1[BGRUW]|[BGRUW][BGRUW]))? to your mana pool", re.IGNORECASE)
 MANA_RE=re.compile("(?<![1-9BGRUW], )TAP:.*add ([1BGRUW]|(one|two|three|four|X).* mana)( or ([1BGRUW]|(one|two|three|four|X).* mana))? to your mana pool|^\[[BGRUW]\]$", re.IGNORECASE)
 SLOW_RE=re.compile("comes into play tapped", re.IGNORECASE)
@@ -876,6 +936,32 @@ def testmana(tdeck):
     print "ave in 10 cards: %s, chance >= 3 in 10 cards: %s, ave in 13 cards: %s, chance >= 4 in 13 cards: %s" % (float(tot10)/r, float(succs10)/r, float(tot13)/r, float(succs13)/r,)
 
 code.interact("mtgspoiler", None, locals())
+
+__setupstr="""
+SEED=23
+MYDECK="trickerycolorGU.deck"
+HISDECK="sligh.deck"
+deck.import_list(MYDECK)
+hisdeck.import_list(HISDECK)
+deck.shuffle(SEED)
+hisdeck.shuffle(SEED)
+randutil.randrange(0, 2)
+h=hand
+ip=iplay
+b=board
+g=grave
+hd=hisdraw
+hh=hishand
+hp=hisplay
+hb=hisboard
+hg=hisgrave
+for i in range(7):
+    idraw()
+
+for i in range(7):
+    hd()
+
+"""
 
 # Copyright (c) 2002 Bryce "Zooko" Wilcox-O'Hearn
 # Permission is hereby granted, free of charge, to any person obtaining a copy
