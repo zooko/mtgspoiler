@@ -5,7 +5,7 @@
 # See the end of this file for the free software, open source license (BSD-style).
 
 # CVS:
-__cvsid = '$Id: mtgspoiler.py,v 1.18 2002/12/19 05:26:38 zooko Exp $'
+__cvsid = '$Id: mtgspoiler.py,v 1.19 2002/12/19 05:28:10 zooko Exp $'
 
 # HOWTO:
 # 1. Get pyutil_new from `http://sf.net/projects/pyutil'.
@@ -360,15 +360,16 @@ class Card(dictutil.UtilDict):
         else:
             res += ' ' + RARITY_NAME_MAP[self['Rarity']] + '\n'
         ks.remove('Rarity')
-        assert self.has_key('Card Text'), { 'self': self, 'self.data': self.data, } # This is just for debugging.  It's okay if a card doesn't have card text.
+        # assert self.has_key('Card Text'), { 'self': self, 'self.data': self.data, } # This is just for debugging.  It's okay if a card doesn't have card text.
         if self.get('Card Text'):
             res += self['Card Text'] + '\n'
-        ks.remove('Card Text')
+        if 'Card Text' in ks:
+            ks.remove('Card Text')
         if includeflavortext and self.get('Flavor Text'):
             res += self['Flavor Text'] + '\n'
         if 'Flavor Text' in ks:
             ks.remove('Flavor Text')
-        assert self.has_key('Artist'), { 'self': self, 'self.data': self.data, } # This is just for debugging.  It's okay if a card doesn't have Artist.
+        # assert self.has_key('Artist'), { 'self': self, 'self.data': self.data, } # This is just for debugging.  It's okay if a card doesn't have Artist.
         if includeartist and self.get('Artist'):
             res += self['Artist'] + '\n'
         if 'Artist' in ks:
