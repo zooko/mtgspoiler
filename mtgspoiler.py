@@ -5,7 +5,7 @@
 # See the end of this file for the free software, open source license (BSD-style).
 
 # CVS:
-__cvsid = '$Id: mtgspoiler.py,v 1.3 2002/03/04 20:57:29 zooko Exp $'
+__cvsid = '$Id: mtgspoiler.py,v 1.4 2002/03/04 22:01:46 zooko Exp $'
 
 # HOWTO:
 # 1. Get pyutil from `http://sf.net/projects/pyutil'.
@@ -50,7 +50,7 @@ import dictutil
 import VersionNumber
 
 # major, minor, micro (== bugfix release), nano (== not-publically-visible patchlevel), flag (== not-publically-visible UNSTABLE or STABLE flag)
-versionobj = VersionNumber.VersionNumber(string.join(map(str, (0, 0, 5, 1,)), '.') + '-' + 'UNSTABLE')
+versionobj = VersionNumber.VersionNumber(string.join(map(str, (0, 0, 5, 2,)), '.') + '-' + 'UNSTABLE')
 
 true = 1
 false = 0
@@ -577,6 +577,9 @@ class Library(UserList.UserList):
         self.data.extend(initialdata)
         pass
 
+    def cards(self):
+        return self.data[:]
+
     def __repr__(self):
         return string.join(map(lambda x: x["Card Name"], self), ", ")
 
@@ -609,41 +612,36 @@ class Library(UserList.UserList):
         """
         This writes out the cards into a file in a "deck listing" format.
         """
-        creatures = []
-        lands = []
-        spells = []
-        d = {}
+        cd = dictutil.NumDict()
+        ld = dictutil.NumDict()
+        sd = dictutil.NumDict()
 
-        for c in self:
-            d[c["Card Name"]] = d.get(c["Card Name"], 0) + 1
-
-        for n in d.keys():
-            c = self.db[n]
+        for c in self.cards():
             if c["Type & Class"].find("nchant") != -1:
-                spells.append(c)
+                sd.inc(c["Card Name"])
             elif c["Type & Class"].find("reature") != -1:
-                creatures.append(c)
+                cd.inc(c["Card Name"])
             elif LAND_TYPE_AND_CLASS_RE.search(c["Type & Class"]):
-                lands.append(c)
+                ld.inc(c["Card Name"])
             else:
-                spells.append(c)
+                sd.inc(c["Card Name"])
 
-        creatures.sort(lambda x, y: cmp(d[x["Card Name"]], d[y["Card Name"]]))
+        creatures = cd.items_sorted_by_value()
         creatures.reverse()
-        lands.sort(lambda x, y: cmp(d[x["Card Name"]], d[y["Card Name"]]))
-        lands.reverse()
-        spells.sort(lambda x, y: cmp(d[x["Card Name"]], d[y["Card Name"]]))
+        spells = sd.items_sorted_by_value()
         spells.reverse()
-
+        lands = ld.items_sorted_by_value()
+        lands.reverse()
+            
         f = open(fname, "w")
-        for c in creatures:
-            f.write(str(d[c["Card Name"]]) + " " + c["Card Name"] + "\n")
+        for cn, n in creatures:
+            f.write(str(n) + " " + cn + "\n")
         f.write("\n")
-        for c in spells:
-            f.write(str(d[c["Card Name"]]) + " " + c["Card Name"] + "\n")
+        for cn, n in spells:
+            f.write(str(n) + " " + cn + "\n")
         f.write("\n")
-        for c in lands:
-            f.write(str(d[c["Card Name"]]) + " " + c["Card Name"] + "\n")
+        for cn, n in lands:
+            f.write(str(n) + " " + cn + "\n")
         f.write("\n")
 
 # initialize!
