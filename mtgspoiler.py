@@ -5,7 +5,7 @@
 # See the end of this file for the free software, open source license (BSD-style).
 
 # CVS:
-__cvsid = '$Id: mtgspoiler.py,v 1.9 2002/12/16 03:19:15 zooko Exp $'
+__cvsid = '$Id: mtgspoiler.py,v 1.10 2002/12/18 04:53:44 zooko Exp $'
 
 # HOWTO:
 # 1. Get pyutil_new from `http://sf.net/projects/pyutil'.
@@ -51,6 +51,7 @@ import UserList, code, copy, exceptions, operator, re, string, sys, types, urlli
 # pyutil modules (http://sf.net/projects/pyutil)
 from pyutil import strutil
 from pyutil import dictutil
+from pyutil import humanreadable
 from pyutil import randutil
 from pyutil import VersionNumber
 
@@ -89,6 +90,9 @@ SET_NAME_ABBREV_MAP = { # incomplete
     'Seventh Edition': '7E',
     'Odyssey': 'OD',
     'Judgment': 'JU',
+    'Invasion': 'IN',
+    'Planeshift': 'PL',
+    'Apocalypse': 'AP',
     }
 
 def findmagiccards_url(c):
@@ -103,6 +107,8 @@ def findmagiccards_page(c):
 
 FMC_PRICE_RE=re.compile("Price :</TD><TD>\$ *([0-9]*.[0-9][0-9])", re.IGNORECASE)
 def findmagiccards_price(c):
+    page = None
+    mo = None
     try:
         page = findmagiccards_page(c)
         mo = FMC_PRICE_RE.search(page)
@@ -287,6 +293,8 @@ class Card(dictutil.UtilDict):
         @returns a string containing the pretty form
         """
         ks = self.keys()
+        if 'DOLLARPRICE' in ks:
+            ks.remove('DOLLARPRICE')
         res = self['Card Name'] + '\n'
         ks.remove('Card Name')
         if self.has_key('Mana Cost'):
@@ -348,6 +356,7 @@ class DB(dictutil.UtilDict):
 
     def fetch_latest_prices(self):
         for c in self.cards():
+            assert isinstance(c, Card)
             c.fetch_latest_price()
 
     def copy(self):
@@ -475,7 +484,7 @@ class DB(dictutil.UtilDict):
 
         self.filter_out("Card Text", ro)
 
-    def filter_in_useful_for_playing_colors(self, colors="BGRUW"):
+    def filter_in_useful_for_playing_colors(self, colors):
         """
         Removes all cards which aren't "useful" for playing a deck that uses only `colors':
 
@@ -526,6 +535,7 @@ class DB(dictutil.UtilDict):
         thiscard = None
         thiskey = None
         thisval = None
+        prevline = None # just for debugging
         for line in f.xreadlines():
             line = strutil.pop_trailing_newlines(line)
             if line[:len("Card Name:")] == "Card Name:":
@@ -539,10 +549,13 @@ class DB(dictutil.UtilDict):
                 if setname:
                     thiscard['Set Name'] = setname
             if incard:
-                assert len(line) > 0
-                # Some spoiler lists have typos in which continued lines don't start with white space.  We'll assume that if this line doesn't have a separator (none of ':', '\t', or '  '), *and* if the previous line was more than 50 chars, that this is one of those typos.
-                # Some spoiler lists have typos in which attributions of quotes start on the line after the quote (in a Flavor Text field) but have no start with white space.  We'll assume that if this line begins with '-', doesn't have a separator (none of ':', '\t', or '  '), *and* if the previous line a Flavor Text field, then this is one of those typos.
-                if (line[0] in string.whitespace) or ((line.find(":") == -1) and (line.find("\t") == -1) and (line.find("  ") == -1) and ((thisval and len(thisval) > 50) or (thiskey == 'Flavor Text'))):
+                if len(line) == 0:
+                    # Some older spoiler lists have extra blank lines.
+                    pass
+                elif (line[0] in string.whitespace) or ((line.find(":") == -1) and (line.find("\t") == -1) and (line.find("  ") == -1) and ((thisval and len(thisval) > 50) or (thiskey == 'Flavor Text') or (line[0] in string.ascii_uppercase))):
+                    # Some spoiler lists have typos in which continued lines don't start with white space.  We'll assume that if this line doesn't have a separator (none of ':', '\t', or '  '), *and* if the previous line was more than 50 chars, that this is one of those typos.
+                    # Some spoiler lists have typos in which attributions of quotes start on the line after the quote (in a Flavor Text field) but have no start with white space.  We'll assume that if this line begins with '-', doesn't have a separator (none of ':', '\t', or '  '), *and* if the previous line a Flavor Text field, then this is one of those typos.
+                    # Some older spoiler lists have linebreaks between lines of Card Text.  We'll assume that if this line doesn't have a separator (none of ':', '\t', or '  '), *and* if the first character of the line is a capital letter, that this is one of those.
                     assert thiskey is not None
                     assert thisval is not None
                     thisval += ' ' + line.strip()
@@ -592,6 +605,7 @@ class DB(dictutil.UtilDict):
                     thiscard[thiskey] = thisval
             elif (not setname) and (line.find("Spoiler") != -1):
                 setname = line[:line.find("Spoiler")-1]
+            prevline = line # just for debugging
 
         # Okay now fix up any obsolete or inconsistent bits.
         map(Card._update, self.cards())
@@ -704,10 +718,10 @@ class Library(UserList.UserList):
         for c in self.cards():
             c.fetch_latest_price()
 
-    def total_cost(self):
+    def sum_of_prices(self):
         sum = 0
         for c in self.cards():
-            if c.get('DOLLARPRICE') is not None:
+            if c.get('DOLLARPRICE'):
                 sum += float(c.get('DOLLARPRICE'))
         return sum
 
@@ -938,8 +952,8 @@ def testmana(tdeck):
 code.interact("mtgspoiler", None, locals())
 
 __setupstr="""
-SEED=23
-MYDECK="trickerycolorGU.deck"
+SEED=29
+MYDECK="G_cycle.deck"
 HISDECK="sligh.deck"
 deck.import_list(MYDECK)
 hisdeck.import_list(HISDECK)
