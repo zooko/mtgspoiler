@@ -5,7 +5,7 @@
 # See the end of this file for the free software, open source license (BSD-style).
 
 # CVS:
-__cvsid = '$Id: mtgspoiler.py,v 1.11 2002/12/18 05:04:42 zooko Exp $'
+__cvsid = '$Id: mtgspoiler.py,v 1.12 2002/12/19 04:15:28 zooko Exp $'
 
 # HOWTO:
 # 1. Get pyutil_new from `http://sf.net/projects/pyutil'.
@@ -172,7 +172,7 @@ class Card(dictutil.UtilDict):
                 self[new] = self[old]
                 del self[old]
         # Different spoiler lists do different things for the "Mana Cost" of a land.  What *we* do is remove it from the dict entirely.
-        # (When exporting a spoiler list, it will be printed as "n/a", which is how the Torment spoiler list did it.)
+        # (When exporting a spoiler list, it will be printed as "n/a", which is how the new spoiler lists do it.)
         try:
             if LAND_TYPE_AND_CLASS_RE.search(self["Type & Class"]):
                 self.del_if_present("Mana Cost")
@@ -336,7 +336,8 @@ class Card(dictutil.UtilDict):
         ks.remove('Card Color')
         if includecardnumber:
             res += self['Card #'] + '\n'
-        ks.remove('Card #')
+        if 'Card #' in ks:
+            ks.remove('Card #')
 
         for k in ks:
             if self[k]:
@@ -958,9 +959,9 @@ def testmana(tdeck):
 code.interact("mtgspoiler", None, locals())
 
 __setupstr="""
-SEED=29
-MYDECK="G_cycle.deck"
-HISDECK="sligh.deck"
+SEED=30
+MYDECK="mine/trickerycolorGU.deck"
+HISDECK="others/sligh.deck"
 deck.import_list(MYDECK)
 hisdeck.import_list(HISDECK)
 deck.shuffle(SEED)
