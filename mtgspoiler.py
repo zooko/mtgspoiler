@@ -5,7 +5,7 @@
 # See the end of this file for the free software, open source license (BSD-style).
 
 # CVS:
-__cvsid = '$Id: mtgspoiler.py,v 1.26 2003/01/24 04:46:00 zooko Exp $'
+__cvsid = '$Id: mtgspoiler.py,v 1.27 2003/01/25 04:06:32 zooko Exp $'
 
 # HOWTO:
 # 1. Get pyutil_new from `http://sf.net/projects/pyutil'.
@@ -139,6 +139,7 @@ SET_NAME_ABBREV_MAP = { # incomplete
     "Portal Three Kingdoms": "P3K",
     "Portal Second Age": "PO2",
     "Portal": "PO",
+    "Legions": "LE",
     }
 
 def findmagiccards_url(c):
