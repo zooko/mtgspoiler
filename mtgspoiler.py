@@ -5,7 +5,7 @@
 # See the end of this file for the free software, open source license (BSD-style).
 
 # CVS:
-__cvsid = '$Id: mtgspoiler.py,v 1.10 2002/12/18 04:53:44 zooko Exp $'
+__cvsid = '$Id: mtgspoiler.py,v 1.11 2002/12/18 05:04:42 zooko Exp $'
 
 # HOWTO:
 # 1. Get pyutil_new from `http://sf.net/projects/pyutil'.
@@ -173,8 +173,13 @@ class Card(dictutil.UtilDict):
                 del self[old]
         # Different spoiler lists do different things for the "Mana Cost" of a land.  What *we* do is remove it from the dict entirely.
         # (When exporting a spoiler list, it will be printed as "n/a", which is how the Torment spoiler list did it.)
-        if LAND_TYPE_AND_CLASS_RE.search(self["Type & Class"]):
-            self.del_if_present("Mana Cost")
+        try:
+            if LAND_TYPE_AND_CLASS_RE.search(self["Type & Class"]):
+                self.del_if_present("Mana Cost")
+        except exceptions.StandardError, le:
+            print humanreadable.hr(le)
+            print humanreadable.hr(self)
+            raise exceptions.StandardError, { 'cause': le, 'self': self }
 
     def fetch_latest_price(self):
         self['DOLLARPRICE'] = findmagiccards_price(self)
@@ -550,8 +555,9 @@ class DB(dictutil.UtilDict):
                     thiscard['Set Name'] = setname
             if incard:
                 if len(line) == 0:
-                    # Some older spoiler lists have extra blank lines.
-                    pass
+                    if thiskey == 'Rarity':
+                        incard = false
+                        thiscard[thiskey] = thisval
                 elif (line[0] in string.whitespace) or ((line.find(":") == -1) and (line.find("\t") == -1) and (line.find("  ") == -1) and ((thisval and len(thisval) > 50) or (thiskey == 'Flavor Text') or (line[0] in string.ascii_uppercase))):
                     # Some spoiler lists have typos in which continued lines don't start with white space.  We'll assume that if this line doesn't have a separator (none of ':', '\t', or '  '), *and* if the previous line was more than 50 chars, that this is one of those typos.
                     # Some spoiler lists have typos in which attributions of quotes start on the line after the quote (in a Flavor Text field) but have no start with white space.  We'll assume that if this line begins with '-', doesn't have a separator (none of ':', '\t', or '  '), *and* if the previous line a Flavor Text field, then this is one of those typos.
