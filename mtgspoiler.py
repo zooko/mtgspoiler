@@ -5,7 +5,7 @@
 # See the end of this file for the free software, open source license (BSD-style).
 
 # CVS:
-__cvsid = '$Id: mtgspoiler.py,v 1.29 2003/03/14 21:23:24 zooko Exp $'
+__cvsid = '$Id: mtgspoiler.py,v 1.30 2004/09/27 17:03:38 zooko Exp $'
 
 # HOWTO:
 # 1. Get pyutil_new from `http://sf.net/projects/pyutil'.
@@ -457,11 +457,11 @@ class Card(dictutil.UtilDict):
         return res
 
 CARDS_TOTAL_RE=re.compile("([1-9][0-9]*) Cards? Total", re.IGNORECASE)
-SPOILER_NAME_RE=re.compile("(.*?) (Spoiler|Spoiler List|Card Spoiler List|Edition Card List|Card List|Checklist)$", re.IGNORECASE)
+SPOILER_NAME_RE=re.compile("Magic: The Gathering - (.*?)$|(.*?) (Spoiler|Spoiler List|Card Spoiler List|Edition Card List|Card List|Checklist)$", re.IGNORECASE)
 
 CARDNAME_K_VERSIONS_RE_STR="(.*?)( (\(([2-9][0-9]*) ?versions\)))?\s*$"
 CARDNAME_K_VERSIONS_RE=re.compile(CARDNAME_K_VERSIONS_RE_STR, re.IGNORECASE)
-CARDNAME_FIELD_RE=re.compile("Card (Name|Title):\s*" + CARDNAME_K_VERSIONS_RE_STR)
+CARDNAME_FIELD_RE=re.compile(" *Card (Name|Title):\s*" + CARDNAME_K_VERSIONS_RE_STR)
 
 DOUBLE_CARD_NAME_RE=re.compile("(.*)/(.*) \((.*)\)")
 LAND_TYPE_AND_CLASS_RE=re.compile("(?<![Ee]nchant )[Ll]and")
@@ -777,6 +777,7 @@ class DB(dictutil.UtilDict):
         thisval = None
         prevline = None # just for debugging
         for line in f.xreadlines():
+            print line
             line = strutil.pop_trailing_newlines(line)
             mo = CARDNAME_FIELD_RE.match(line)
             if mo:
@@ -840,7 +841,11 @@ class DB(dictutil.UtilDict):
                     incard = false
                     thiscard[thiskey] = thisval
             elif (not setname) and SPOILER_NAME_RE.match(line):
-                setname = SPOILER_NAME_RE.match(line).group(1)
+                assert (SPOILER_NAME_RE.match(line).group(1) is None) != (SPOILER_NAME_RE.match(line).group(2) is None)
+                if SPOILER_NAME_RE.match(line).group(1):
+                    setname = SPOILER_NAME_RE.match(line).group(1)
+                else:
+                    setname = SPOILER_NAME_RE.match(line).group(2)
             elif CARDS_TOTAL_RE.match(line):
                 cardstotal = int(CARDS_TOTAL_RE.match(line).group(1))
 
@@ -904,7 +909,7 @@ class DB(dictutil.UtilDict):
                     raise
                 del newc['This Card Name']
                 self[newname] = newc
-        # print "cardstotal: %s, after merging, we had %s" % (cardstotal, len(self.cards()),)
+        print "cardstotal: %s, after merging, we had %s" % (cardstotal, len(self.cards()),)
         if (cardstotal is not None) and (cardstotal != len(self.cards())) and ((cardstotal != namesfound.sum()) or (len(self.cards()) != len(namesfound))):
             print "after merge, cardstotal: %s, namesfound.sum(): %s, len(namesfound): %s, len(self.cards()): %s" % (cardstotal, namesfound.sum(), len(namesfound), len(self.cards()),)
             # self._find_missing_names(fname)
@@ -1024,11 +1029,12 @@ d = DB()
 
 # print "sys.argv: ", sys.argv
 for arg in sys.argv[1:]:
-#     try:
-        d.import_list(arg)
-#     except exceptions.StandardError, le:
-#         print humanreadable.hr(le)
-#         raise le
+    print arg
+    #     try:
+    d.import_list(arg)
+    #     except exceptions.StandardError, le:
+    #         print humanreadable.hr(le)
+    #         raise le
 
 def sort_board(b):
     ls = []
