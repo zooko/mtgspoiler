@@ -5,14 +5,14 @@
 # See the end of this file for the free software, open source license (BSD-style).
 
 # CVS:
-__cvsid = '$Id: mtgspoiler.py,v 1.5 2002/03/04 22:02:22 zooko Exp $'
+__cvsid = '$Id: mtgspoiler.py,v 1.6 2002/03/13 15:02:28 zooko Exp $'
 
 # HOWTO:
 # 1. Get pyutil from `http://sf.net/projects/pyutil'.
 # 2. Get mtgspoiler from `http://sf.net/projects/mtgspoiler'.
 # 3. Get spoiler lists from `http://www.wizards.com/default.asp?x=magic/products/cardlists,,en'.
 # 4. Run this command line:
-# /path/to/pyutil/pstart '$PYTHON -i /path/to/mtgspoiler/mtgspoiler.py /path/to/spoiler.txt /path/to/next_spoiler.txt''
+# /path/to/pyutil/pstart /path/to/mtgspoiler/mtgspoiler.py /path/to/spoiler.txt /path/to/next_spoiler.txt
 # 5. Now you're in a Python interpreter with a local object named `d' containing the spoiler
 #    database.  If you haven't already, learn Python from
 #    `http://python.sourceforge.net/devel-docs/tut/tut.html'.  Assuming you are a hacker, this will
@@ -41,7 +41,7 @@ __cvsid = '$Id: mtgspoiler.py,v 1.5 2002/03/04 22:02:22 zooko Exp $'
 # * import "Oracle" errata and apply them...
 
 # standard modules
-import UserList, copy, random, re, string, sys, types
+import UserList, code, copy, random, re, string, sys, types
 
 # pyutil modules (http://sf.net/projects/pyutil)
 import strutil
@@ -49,7 +49,7 @@ import dictutil
 import VersionNumber
 
 # major, minor, micro (== bugfix release), nano (== not-publically-visible patchlevel), flag (== not-publically-visible UNSTABLE or STABLE flag)
-versionobj = VersionNumber.VersionNumber(string.join(map(str, (0, 0, 5, 2,)), '.') + '-' + 'UNSTABLE')
+versionobj = VersionNumber.VersionNumber(string.join(map(str, (0, 0, 6, 0,)), '.') + '-' + 'UNSTABLE')
 
 true = 1
 false = 0
@@ -142,10 +142,13 @@ class Card(dictutil.UtilDict):
         num = "0"
         mc = self.get("Mana Cost", '0')
         if mc.find("/") != -1:
-            mc = mc[:mc.find("/")] # ??? for double-cards.
+            mc = mc[:mc.find("/")] # for double-cards.
         for char in mc:
             if char in "BGRUW":
                 cc+=1
+            elif char in "X":
+                # whatever...
+                pass
             else:
                 num += char
         cc += int(num)
@@ -156,6 +159,12 @@ class Card(dictutil.UtilDict):
         if mc.find("/") != -1:
             mc = mc[:mc.find("/")] # ??? for double-cards.
         return filter(lambda c: c in "BGRUW", mc)
+
+    def is_creature(self):
+        return CREATURE_TYPE_AND_CLASS_RE.search(self["Type & Class"])
+
+    def is_land(self):
+        return LAND_TYPE_AND_CLASS_RE.search(self["Type & Class"])
 
     def full_print(self):
         """
@@ -198,6 +207,18 @@ class Card(dictutil.UtilDict):
         s = formfield(s, "Card #", self["Card #"])
         s+="\n"
         return s
+
+    def terse_print(self):
+        """
+        @returns a string containing the terse form
+        """
+        res = ""
+        if self.get("Mana Cost") is not None:
+            res += self["Mana Cost"] + ": "
+        res += self["Card Name"]
+        if self.get("Pow/Tou") is not None:
+            res += " " + self["Pow/Tou"]
+        return res
 
     def pretty_print(self, includeartist=false, includeflavortext=false, includecardcolor=false, includecardnumber=false):
         """
@@ -250,6 +271,7 @@ class Card(dictutil.UtilDict):
 
 DOUBLE_CARD_NAME_RE=re.compile("(.*)/(.*) \(.*\)")
 LAND_TYPE_AND_CLASS_RE=re.compile("(?<![Ee]nchant )[Ll]and")
+CREATURE_TYPE_AND_CLASS_RE=re.compile("(?<![Ee]nchant )[Cc]reature")
 
 class DB(dictutil.UtilDict):
     def __init__(self, initialdata={}, importfile=None):
@@ -263,6 +285,12 @@ class DB(dictutil.UtilDict):
         for k, v in self.items():
             res[k] = v.copy()
         return res
+
+    def terse_print(self):
+        l = self.cards()
+        l.sort(cmpmanacost)
+        for c in l:
+            print c.terse_print()
 
     def __repr__(self):
         return string.join(map(lambda x: x + '\n', map(Card.pretty_print, self.cards())))
@@ -308,12 +336,12 @@ class DB(dictutil.UtilDict):
 
     def filter_out_colors(self, colors='RGWUB'):
         for name, card in self.items():
-            if len(filter(lambda color: color in card.get('Mana Cost', ''), colors)) > 0:
+            if len(filter(lambda color, card=card: color in card.get('Mana Cost', ''), colors)) > 0:
                 del self[name]
 
     def filter_in_colors(self, colors='RGWUB'):
         for name, card in self.items():
-            if len(filter(lambda color: color in card.get('Mana Cost', ''), colors)) == 0:
+            if len(filter(lambda color, card=card: color in card.get('Mana Cost', ''), colors)) == 0:
                 del self[name]
 
     def filter_out_uses_or_generates_mana(self, mana="BGRUW"):
@@ -439,7 +467,7 @@ class DB(dictutil.UtilDict):
                     if thiskey == "Card Name":
                         self.data[thisval.strip()] = thiscard
                     elif thiskey == "Pow/Tou":
-                        if thisval.strip() == "n/a":
+                        if thisval.strip().lower() == "n/a":
                             thisval = ""
                         if thisval.find('/') != -1:
                             try:
@@ -453,11 +481,11 @@ class DB(dictutil.UtilDict):
                                 # Oh, this must be a "special" Tou.
                                 thiscard['Tou'] = thisval[thisval.find('/')+1:].strip()
 
-                    if thiskey is not None:
+                    if thiskey:
                         thiscard[thiskey] = thisval.strip()
                         # assert not ((thiskey == "Mana Cost") and (thisval.strip().find("and") != -1)), "thiscard.data: %s, thiskey: %s, thisval: %s" % (thiscard.data, thiskey, thisval,) # we fix this in "_update()".
-                        thiskey = None
-                        thisval = None
+                    thiskey = None
+                    thisval = None
 
                     # on to the next key and val!
                     sepindex = line.find(':')
@@ -618,7 +646,7 @@ class Library(UserList.UserList):
         for c in self.cards():
             if c["Type & Class"].find("nchant") != -1:
                 sd.inc(c["Card Name"])
-            elif c["Type & Class"].find("reature") != -1:
+            elif CREATURE_TYPE_AND_CLASS_RE.search(c["Type & Class"]):
                 cd.inc(c["Card Name"])
             elif LAND_TYPE_AND_CLASS_RE.search(c["Type & Class"]):
                 ld.inc(c["Card Name"])
@@ -649,6 +677,8 @@ d = DB()
 # print "sys.argv: ", sys.argv
 for arg in sys.argv[1:]:
     d.import_list(arg)
+
+code.interact("mtgspoiler", None, locals())
 
 # Copyright (c) 2002 Bryce "Zooko" Wilcox-O'Hearn
 # Permission is hereby granted, free of charge, to any person obtaining a copy
