@@ -5,7 +5,7 @@
 # See the end of this file for the free software, open source license (BSD-style).
 
 # CVS:
-__cvsid = '$Id: mtgspoiler.py,v 1.22 2002/12/19 09:35:27 zooko Exp $'
+__cvsid = '$Id: mtgspoiler.py,v 1.23 2003/01/18 22:25:02 zooko Exp $'
 
 # HOWTO:
 # 1. Get pyutil_new from `http://sf.net/projects/pyutil'.
@@ -323,9 +323,11 @@ class Card(dictutil.UtilDict):
             ks.remove("Pow")
         if "Tou" in ks:
             ks.remove("Tou")
+
         if "Card #" in ks:
             ks.remove("Card #")
-        for k in ks:
+
+        for k in copy.copy(ks):
             s = formfield(s, k, self[k])
             ks.remove(k)
 
@@ -851,43 +853,6 @@ class DB(dictutil.UtilDict):
         for c in self.cards():
             writecard(f, c)
 
-    def export_list_old_and_fast(self, fname):
-        """
-        This writes out the cards into a file in the "spoiler list" format.
-        """
-        def writecard(f, c):
-            def writefield(f, k, v):
-                f.write(k+':')
-                if len(k) < 7:
-                    f.write('\t')
-                f.write('\t')
-                fv = v.replace(v, "\n", "\n\t\t")
-                f.write(fv)
-                f.write('\n')
-
-            ks = c.keys()
-            for k in ("Card Name", "Card Color", "Mana Cost", "Type & Class", "Pow/Tou", "Card Text", "Flavor Text", "Artist", "Rarity"):
-                if c.has_key(k):
-                    writefield(f, k, c[k])
-                    ks.remove(k)
-
-            if "Pow" in ks:
-                ks.remove("Pow")
-            if "Tou" in ks:
-                ks.remove("Tou")
-            if "Card #" in ks:
-                ks.remove("Card #")
-            for k in ks:
-                writefield(f, k, c[k])
-                ks.remove(k)
-
-            writefield(f, "Card #", c["Card #"])
-            f.write("\n")
-
-        f = open(fname, "w")
-        for c in self.cards():
-            writecard(f, c)
-
 LIB_RE=re.compile("\s*([0-9]*)\s*[Xx]?\s*([^ \t\n\r\f\v#]+(?: ?[^\r\n #]+)*)")
 
 class Library(UserList.UserList):
@@ -1117,32 +1082,44 @@ def ave_screwage(tdeck, maxturns=6, draw=0):
         sum += sum_screwage(tdeck, maxturns, draw)
     return float(sum) / r
 
-def testmana(tdeck):
+def testmana(tdeck, iters=2**10):
     tot10 = 0
     tot13 = 0
+    screwle0_10 = 0
+    screwle1_10 = 0
+    screwle2_10 = 0
+    atleast2_10 = 0
     succs10 = 0
     succs13 = 0
-    r=2**10
+    r=iters
     for i in range(r):
         tdeck.shuffle(r)
         res10 = _measuremana(tdeck, 10)
         tot10 += res10
         if res10 >= 3:
             succs10+=1
+        if res10 <= 0:
+            screwle0_10+=1
+        if res10 <= 1:
+            screwle1_10+=1
+        if res10 <= 2:
+            screwle2_10+=1
+        if res10 >= 2:
+            atleast2_10+=1
         res13 = _measuremana(tdeck, 13)
         assert res13 >= res10
         if res13 >= 4:
             succs13+=1
         tot13 += res13
 
-    print "ave in 10 cards: %s, chance >= 3 in 10 cards: %s, ave in 13 cards: %s, chance >= 4 in 13 cards: %s" % (float(tot10)/r, float(succs10)/r, float(tot13)/r, float(succs13)/r,)
+    print "ave in 10 cards: %0.1f, chance <= 0 in 10 cards: %0.2f, chance <= 1 in 10 cards: %0.2f, chance <= 2 in 10 cards: %0.2f, chance >= 2 in 10 cards: %0.2f, chance >= 3 in 10 cards: %0.2f, ave in 13 cards: %0.1f, chance >= 4 in 13 cards: %0.2f" % (float(tot10)/r, float(screwle0_10)/r, float(screwle1_10)/r, float(screwle2_10)/r, float(atleast2_10)/r, float(succs10)/r, float(tot13)/r, float(succs13)/r,)
 
 code.interact("mtgspoiler", None, locals())
 
 __setupstr="""
-SEED=30
-MYDECK="mine/B_type1.deck"
-HISDECK="others/type1_1st.deck"
+SEED=42
+MYDECK="mine/whiteweenie.deck"
+HISDECK="others/WG_beatdown.deck"
 deck.import_list(MYDECK)
 hisdeck.import_list(HISDECK)
 deck.shuffle(SEED)
@@ -1157,6 +1134,8 @@ hh=hishand
 hp=hisplay
 hb=hisboard
 hg=hisgrave
+#testmana(deck)
+#testmana(hisdeck)
 for i in range(7):
     idraw()
 
