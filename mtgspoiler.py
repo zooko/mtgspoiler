@@ -5,7 +5,7 @@
 # See the end of this file for the free software, open source license (BSD-style).
 
 # CVS:
-__cvsid = '$Id: mtgspoiler.py,v 1.13 2002/12/19 04:29:08 zooko Exp $'
+__cvsid = '$Id: mtgspoiler.py,v 1.14 2002/12/19 05:06:12 zooko Exp $'
 
 # HOWTO:
 # 1. Get pyutil_new from `http://sf.net/projects/pyutil'.
@@ -168,6 +168,15 @@ UPDATE_RARITIES={
     'L': 'L',
     }
 
+CARD_NAME_K_VERSIONS_RE=re.compile("(.*?) (\([2-9][0-9]* ?versions\))", re.IGNORECASE)
+def _fixnames(name):
+    name = name.replace('\xc6', 'AE')
+    # alliances.txt, arabian_nights.txt, and homelands.txt have "(2 versions)" in the Card Name.
+    mo = CARD_NAME_K_VERSIONS_RE.match(name)
+    if mo:
+        name = mo.group(1)
+    return name
+
 class Card(dictutil.UtilDict):
     def __init__(self, initialdata={}):
         dictutil.UtilDict.__init__(self, initialdata)
@@ -199,6 +208,10 @@ class Card(dictutil.UtilDict):
             print humanreadable.hr(le)
             print humanreadable.hr(self)
             raise exceptions.StandardError, { 'cause': le, 'self': self }
+
+        # If it doesn't have a 'Card Color', and it is an artifact, then make its 'Card Color' be "Artifact", which is what newer spoiler lists do.
+        if not self.has_key('Card Color') and self.is_artifact():
+            self['Card Color'] = "Artifact"
 
     def fetch_latest_price(self):
         self['DOLLARPRICE'] = findmagiccards_price(self)
@@ -344,7 +357,9 @@ class Card(dictutil.UtilDict):
         else:
             res += ' ' + RARITY_NAME_MAP[self['Rarity']] + '\n'
         ks.remove('Rarity')
-        if self['Card Text']:
+        if not self.has_key('Card Text'):
+            raise exceptions.StandardError, { 'self': self, 'self.data': self.data, }
+        if self.get('Card Text'):
             res += self['Card Text'] + '\n'
         ks.remove('Card Text')
         if includeflavortext and self.get('Flavor Text'):
@@ -354,9 +369,13 @@ class Card(dictutil.UtilDict):
         if includeartist:
             res += self['Artist'] + '\n'
         ks.remove('Artist')
-        if includecardcolor:
+        if includecardcolor and self.get('Card Color'):
             res += self['Card Color'] + '\n'
-        ks.remove('Card Color')
+        try:
+            ks.remove('Card Color')
+        except exceptions.StandardError, le:
+            raise exceptions.StandardError, { 'problem': 'Card Color not found.', 'cause': le, 'self': self, }
+        
         if includecardnumber:
             res += self['Card #'] + '\n'
         if 'Card #' in ks:
@@ -553,6 +572,30 @@ class DB(dictutil.UtilDict):
     def cards(self):
         return self.values()
 
+    def _process_key_and_val(self, thiskey, thisval, thiscard):
+        thiskey = UPDATE_NAMES.get(thiskey, thiskey)
+        if thiskey == "Card Name":
+            thisval = _fixnames(thisval.strip())
+            self.data[thisval] = thiscard
+        elif thiskey == "Pow/Tou":
+            if thisval.strip().lower() == "n/a":
+                thisval = ""
+            if thisval.find('/') != -1:
+                try:
+                    thiscard['Pow'] = int(thisval[:thisval.find('/')].strip())
+                except ValueError:
+                    # Oh, this must be a "special" Pow.
+                    thiscard['Pow'] = thisval[:thisval.find('/')].strip()
+                try:
+                    thiscard['Tou'] = int(thisval[thisval.find('/')+1:].strip())
+                except ValueError:
+                    # Oh, this must be a "special" Tou.
+                    thiscard['Tou'] = thisval[thisval.find('/')+1:].strip()
+
+        if thiskey:
+            thiscard[thiskey] = thisval.strip()
+            # assert not ((thiskey == "Mana Cost") and (thisval.strip().find("and") != -1)), "thiscard.data: %s, thiskey: %s, thisval: %s" % (thiscard.data, thiskey, thisval,) # we fix this in "_update()".
+        
     def import_list(self, fname):
         """
         This reads in a spoiler list in Wizards of the Coast text format and populates `self.data'.
@@ -582,37 +625,23 @@ class DB(dictutil.UtilDict):
                     if thiskey == 'Rarity':
                         incard = false
                         thiscard[thiskey] = thisval
-                elif (line[0] in string.whitespace) or ((line.find(":") == -1) and (line.find("\t") == -1) and (line.find("  ") == -1) and ((thisval and len(thisval) > 50) or (thiskey == 'Flavor Text') or (line[0] in string.ascii_uppercase))):
+                elif (line[0] in string.whitespace) or ((line.find(":") == -1) and (line.find("\t") == -1) and (line.find("  ") == -1) and ((thisval and len(thisval) > 50) or (thiskey == 'Flavor Text') or ((line[0] in string.ascii_uppercase) and (thiskey == 'Card Text')))):
                     # Some spoiler lists have typos in which continued lines don't start with white space.  We'll assume that if this line doesn't have a separator (none of ':', '\t', or '  '), *and* if the previous line was more than 50 chars, that this is one of those typos.
-                    # Some spoiler lists have typos in which attributions of quotes start on the line after the quote (in a Flavor Text field) but have no start with white space.  We'll assume that if this line begins with '-', doesn't have a separator (none of ':', '\t', or '  '), *and* if the previous line a Flavor Text field, then this is one of those typos.
-                    # Some older spoiler lists have linebreaks between lines of Card Text.  We'll assume that if this line doesn't have a separator (none of ':', '\t', or '  '), *and* if the first character of the line is a capital letter, that this is one of those.
+                    # Some spoiler lists have typos in which attributions of quotes start on the line after the quote (in a Flavor Text field) but have no start with white space.  We'll assume that if this line begins with '-', doesn't have a separator (none of ':', '\t', or '  '), *and* if the previous line was a Flavor Text field, then this is one of those typos.
+                    # Some older spoiler lists have linebreaks between lines of Card Text.  We'll assume that if the previous line was a Card Text field, and this line doesn't have a separator (none of ':', '\t', or '  '), *and* if the first character of the line is a capital letter, that this is one of those.
                     assert thiskey is not None
                     assert thisval is not None
                     thisval += ' ' + line.strip()
-                else:
-                    thiskey = UPDATE_NAMES.get(thiskey, thiskey)
-                    if thiskey == "Card Name":
-                        thisval = thisval.strip()
-                        thisval = string.replace(thisval, '\xc6', 'AE')
-                        self.data[thisval] = thiscard
-                    elif thiskey == "Pow/Tou":
-                        if thisval.strip().lower() == "n/a":
-                            thisval = ""
-                        if thisval.find('/') != -1:
-                            try:
-                                thiscard['Pow'] = int(thisval[:thisval.find('/')].strip())
-                            except ValueError:
-                                # Oh, this must be a "special" Pow.
-                                thiscard['Pow'] = thisval[:thisval.find('/')].strip()
-                            try:
-                                thiscard['Tou'] = int(thisval[thisval.find('/')+1:].strip())
-                            except ValueError:
-                                # Oh, this must be a "special" Tou.
-                                thiscard['Tou'] = thisval[thisval.find('/')+1:].strip()
-
+                elif (line.find(":") == -1) and (line.find("\t") == -1) and (line.find("  ") == -1) and (line[0] in string.ascii_uppercase) and (not thiscard.has_key('Card Text')):
+                    # Some spoiler lists (e.g. "Dry Spell" in homelands.txt), have typos where the "Card Text:" param name is missing!  We'll assume that if this line doesn't have a separator (none of ':', '\t', or '  '), *and* none of the previous assumptions have been taken, *and* if the first character of the line is a capital letter, *and* if there has not been any 'Card Text' field processed for this card yet, then this is one of those.
                     if thiskey:
-                        thiscard[thiskey] = thisval.strip()
-                        # assert not ((thiskey == "Mana Cost") and (thisval.strip().find("and") != -1)), "thiscard.data: %s, thiskey: %s, thisval: %s" % (thiscard.data, thiskey, thisval,) # we fix this in "_update()".
+                        self._process_key_and_val(thiskey, thisval, thiscard)
+                        thiskey = None
+                        thisval = None
+                    thiskey = 'Card Text'
+                    thisval = line
+                else:
+                    self._process_key_and_val(thiskey, thisval, thiscard)
                     thiskey = None
                     thisval = None
 
