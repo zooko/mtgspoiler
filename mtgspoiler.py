@@ -5,7 +5,7 @@
 # See the end of this file for the free software, open source license (BSD-style).
 
 # CVS:
-__cvsid = '$Id: mtgspoiler.py,v 1.17 2002/12/19 05:22:10 zooko Exp $'
+__cvsid = '$Id: mtgspoiler.py,v 1.18 2002/12/19 05:26:38 zooko Exp $'
 
 # HOWTO:
 # 1. Get pyutil_new from `http://sf.net/projects/pyutil'.
@@ -200,7 +200,7 @@ class Card(dictutil.UtilDict):
                 del self[old]
         mo = RARITY_RE.match(self['Rarity'])
         assert mo is not None, { 'Rarity': self['Rarity'], 'self': self, }
-        self['Rarity'] = UPDATE_RARITIES[mo.group(1)] + mo.group(2)
+        self['Rarity'] = UPDATE_RARITIES[mo.group(1)] + (mo.group(2) or "")
 
         # Different spoiler lists do different things for the "Mana Cost" of a land.  What *we* do is remove it from the dict entirely.
         # (When exporting a spoiler list, it will be printed as "n/a", which is how the new spoiler lists do it.)
@@ -360,8 +360,7 @@ class Card(dictutil.UtilDict):
         else:
             res += ' ' + RARITY_NAME_MAP[self['Rarity']] + '\n'
         ks.remove('Rarity')
-        if not self.has_key('Card Text'):
-            raise exceptions.StandardError, { 'self': self, 'self.data': self.data, }
+        assert self.has_key('Card Text'), { 'self': self, 'self.data': self.data, } # This is just for debugging.  It's okay if a card doesn't have card text.
         if self.get('Card Text'):
             res += self['Card Text'] + '\n'
         ks.remove('Card Text')
@@ -369,6 +368,7 @@ class Card(dictutil.UtilDict):
             res += self['Flavor Text'] + '\n'
         if 'Flavor Text' in ks:
             ks.remove('Flavor Text')
+        assert self.has_key('Artist'), { 'self': self, 'self.data': self.data, } # This is just for debugging.  It's okay if a card doesn't have Artist.
         if includeartist and self.get('Artist'):
             res += self['Artist'] + '\n'
         if 'Artist' in ks:
