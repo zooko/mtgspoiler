@@ -5,7 +5,7 @@
 # See the end of this file for the free software, open source license (BSD-style).
 
 # CVS:
-__cvsid = '$Id: mtgspoiler.py,v 1.23 2003/01/18 22:25:02 zooko Exp $'
+__cvsid = '$Id: mtgspoiler.py,v 1.24 2003/01/22 01:57:55 zooko Exp $'
 
 # HOWTO:
 # 1. Get pyutil_new from `http://sf.net/projects/pyutil'.
@@ -115,7 +115,7 @@ def findmagiccards_url(c):
     e.g.
     http://www.findmagiccards.com/Cards/to/Nantuko_Blightcutter.html
     """
-    return "http://www.findmagiccards.com/Cards/" + SET_NAME_ABBREV_MAP[c['Set Name']] + "/" + c['Card Name'].replace(" ", "_").replace(",", "_") + ".html"
+    return "http://www.findmagiccards.com/Cards/" + SET_NAME_ABBREV_MAP[c['Set Name']] + "/" + c['Card Name'].replace(" ", "_").replace(",", "_").replace("'", "_") + ".html"
 
 def findmagiccards_page(c):
     return urllib.urlopen(findmagiccards_url(c)).read()
@@ -133,6 +133,18 @@ def findmagiccards_price(c):
     except exceptions.StandardError, le:
         raise exceptions.StandardError, { 'cause': le, 'page': page, 'mo': mo, 'mo.group(0)': (mo is not None) and mo.group(0), }
    
+def cmppow(x, y):
+    if x.get('Pow') and y.get('Pow'):
+        return cmp(x['Pow'], y['Pow'])
+    else:
+        return cmp(x, y)
+     
+def cmpDOLLARPRICE(x, y):
+    if x['DOLLARPRICE'] and y['DOLLARPRICE']:
+        return cmp(float(x['DOLLARPRICE']), float(y['DOLLARPRICE']))
+    else:
+        return cmp(x['DOLLARPRICE'], y['DOLLARPRICE'])
+
 def cmpmanacost(x, y):
     res = cmp(x.converted_mana_cost(), y.converted_mana_cost())
     if res != 0:
@@ -1117,9 +1129,9 @@ def testmana(tdeck, iters=2**10):
 code.interact("mtgspoiler", None, locals())
 
 __setupstr="""
-SEED=42
-MYDECK="mine/whiteweenie.deck"
-HISDECK="others/WG_beatdown.deck"
+SEED=61
+MYDECK="mine/W_clerics.deck"
+HISDECK="others/psych-pt-chicago-2003.deck"
 deck.import_list(MYDECK)
 hisdeck.import_list(HISDECK)
 deck.shuffle(SEED)
