@@ -5,7 +5,7 @@
 # See the end of this file for the free software, open source license (BSD-style).
 
 # CVS:
-__cvsid = '$Id: mtgspoiler.py,v 1.14 2002/12/19 05:06:12 zooko Exp $'
+__cvsid = '$Id: mtgspoiler.py,v 1.15 2002/12/19 05:14:09 zooko Exp $'
 
 # HOWTO:
 # 1. Get pyutil_new from `http://sf.net/projects/pyutil'.
@@ -46,7 +46,7 @@ __cvsid = '$Id: mtgspoiler.py,v 1.14 2002/12/19 05:06:12 zooko Exp $'
 # * merge double cards via number and not name (ap_spoiler doesn't have double-card names...)
 
 # standard modules
-import UserList, code, copy, exceptions, operator, re, string, sys, types, urllib
+import UserList, code, copy, exceptions, operator, re, string, sys, traceback, types, urllib
 
 # pyutil modules (http://sf.net/projects/pyutil)
 from pyutil import strutil
@@ -152,8 +152,10 @@ UPDATE_NAMES={
     "Casting Cost": "Mana Cost",
     "Cost": "Mana Cost",
     "Card Type": "Type & Class",
+    "CardCard Type": "Type & Class",
     "Type": "Type & Class",
     "Color": "Card Color",
+    "Artists": "Artist",
     }
 
 RARITY_RE=re.compile("(Common|Uncommon|Rare|Land|C|U|R|L) ?([1-9](/[1-9](/[1-9])?)?)?")
@@ -366,9 +368,10 @@ class Card(dictutil.UtilDict):
             res += self['Flavor Text'] + '\n'
         if 'Flavor Text' in ks:
             ks.remove('Flavor Text')
-        if includeartist:
+        if includeartist and self.get('Artist'):
             res += self['Artist'] + '\n'
-        ks.remove('Artist')
+        if 'Artist' in ks:
+            ks.remove('Artist')
         if includecardcolor and self.get('Card Color'):
             res += self['Card Color'] + '\n'
         try:
@@ -863,7 +866,13 @@ d = DB()
 
 # print "sys.argv: ", sys.argv
 for arg in sys.argv[1:]:
-    d.import_list(arg)
+    try:
+        d.import_list(arg)
+    except exceptions.StandardError, le:
+        print humanreadable.hr(le)
+        traceback.print_exc(le)
+        print "arg: %s" % arg
+        raise le
 
 def sort_board(b):
     ls = []
