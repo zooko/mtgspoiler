@@ -5,7 +5,7 @@
 # See the end of this file for the free software, open source license (BSD-style).
 
 # CVS:
-__cvsid = '$Id: mtgspoiler.py,v 1.1 2002/03/04 15:41:07 zooko Exp $'
+__cvsid = '$Id: mtgspoiler.py,v 1.2 2002/03/04 19:29:04 zooko Exp $'
 
 # HOWTO:
 # 1. Get pyutil from `http://sf.net/projects/pyutil'.
@@ -42,7 +42,7 @@ __cvsid = '$Id: mtgspoiler.py,v 1.1 2002/03/04 15:41:07 zooko Exp $'
 # * deal with the "double cards" that have two little cards printed on one card.
 
 # standard modules
-import UserList, copy, re, string, sys, types
+import UserList, copy, random, re, string, sys, types
 
 # pyutil modules (http://sf.net/projects/pyutil)
 import strutil
@@ -50,7 +50,7 @@ import dictutil
 import VersionNumber
 
 # major, minor, micro (== bugfix release), nano (== not-publically-visible patchlevel), flag (== not-publically-visible UNSTABLE or STABLE flag)
-versionobj = VersionNumber.VersionNumber(string.join(map(str, (0, 0, 4, 3,)), '.') + '-' + 'UNSTABLE')
+versionobj = VersionNumber.VersionNumber(string.join(map(str, (0, 0, 5, 0,)), '.') + '-' + 'UNSTABLE')
 
 true = 1
 false = 0
@@ -102,6 +102,13 @@ def cmpmanacost(x, y):
         yc += colorscarcity[c]
     return cmp(xc, yc)
 
+UPDATE_NAMES={
+    "Card Title": "Card Name",
+    "Pow/Tough": "Pow/Tou",
+    "Casting Cost": "Mana Cost",
+    "Card Type": "Type & Class",
+    }
+
 class Card(dictutil.UtilDict):
     def __init__(self, initialdata={}):
         dictutil.UtilDict.__init__(self, initialdata)
@@ -112,13 +119,14 @@ class Card(dictutil.UtilDict):
     def __str__(self):
         return self.pretty_print()
 
-    def _adjust(self):
+    def _update(self):
         """
-        Make sure it is called "Mana Cost" and not the old "Casting Cost".
+        Make sure this card instance uses all new terminology.
         """
-        if self.has_key("Casting Cost"):
-            self["Mana Cost"] = self["Casting Cost"]
-            del self["Casting Cost"]
+        for old, new in UPDATE_NAMES.items():
+            if self.has_key(old):
+                self[new] = self[old]
+                del self[old]
 
     def copy(self):
         res = Card()
@@ -146,7 +154,45 @@ class Card(dictutil.UtilDict):
             mc = mc[:mc.find("/")] # ??? for double-cards.
         return filter(lambda c: c in "BGRUW", mc)
 
+    def full_print(self):
+        """
+        @returns a string containing the full "spoiler" form
+        """
+        s = ""
+        def formfield(s, k, v):
+            # XXX this is incredibly inefficient...  --Zooko 2002-03-04
+            s+=k+':'
+            if len(k) < 7:
+                s+='\t'
+            s+='\t'
+            s+=v
+            s+='\n'
+            return s
+
+        ks = self.keys()
+        for k in ("Card Name", "Card Color", "Mana Cost", "Type & Class", "Pow/Tou", "Card Text", "Flavor Text", "Artist", "Rarity"):
+            if self.has_key(k):
+                s = formfield(s, k, self[k])
+                ks.remove(k)
+
+        if "Pow" in ks:
+            ks.remove("Pow")
+        if "Tou" in ks:
+            ks.remove("Tou")
+        if "Card #" in ks:
+            ks.remove("Card #")
+        for k in ks:
+            s = formfield(s, k, self[k])
+            ks.remove(k)
+
+        s = formfield(s, "Card #", self["Card #"])
+        s+="\n"
+        return s
+
     def pretty_print(self, includeartist=false, includeflavortext=false, includecardcolor=false, includecardnumber=false):
+        """
+        @returns a string containing the pretty form
+        """
         ks = self.keys()
         res = self['Card Name'] + '\n'
         ks.remove('Card Name')
@@ -191,6 +237,8 @@ class Card(dictutil.UtilDict):
                 res += k + ': ' + self[k] + '\n'
 
         return res
+
+DOUBLE_CARD_NAME_RE=re.compile("(.*)/(.*) \(.*\)")
 
 class DB(dictutil.UtilDict):
     def __init__(self, initialdata={}, importfile=None):
@@ -375,19 +423,7 @@ class DB(dictutil.UtilDict):
                     assert thisval is not None
                     thisval += ' ' + line.strip()
                 else:
-                    if thiskey == "Card Title":
-                        # New spoiler lists call it "Card Name", old "Card Title".  We'll convert them all to "Card Name".
-                        thiskey = "Card Name"
-                    elif thiskey == "Pow/Tough":
-                        # New spoiler lists call it "Pow/Tou", old "Pow/Tough".  We'll convert them all to "Pow/Tou".
-                        thiskey = "Pow/Tou"
-                    elif thiskey == "Casting Cost":
-                        # New spoiler lists call it "Mana Cost", old "Casting Cost".  We'll convert them all to "Mana Cost".
-                        thiskey = "Mana Cost"
-                    elif thiskey == "Card Type":
-                        # Some spoiler lists call it "Card Type", most call it "Type & Class".  We'll convert them all to "Type & Class".
-                        thiskey = "Type & Class"
-
+                    thiskey = UPDATE_NAMES.get(thiskey, thiskey)
                     if thiskey == "Card Name":
                         self.data[thisval.strip()] = thiscard
                     elif thiskey == "Pow/Tou":
@@ -433,7 +469,54 @@ class DB(dictutil.UtilDict):
             elif (not setname) and (line.find("Spoiler") != -1):
                 setname = line[:line.find("Spoiler")-1]
 
+        # Okay now merge any "double cards" into a single entry.
+        for c in self.cards():
+            mo = DOUBLE_CARD_NAME_RE.match(c["Card Name"])
+            if mo is not None:
+                subone, subtwo = mo.groups()
+                newname = subone + "/" + subtwo
+                if self.has_key(newname):
+                    continue # already did this one
+                onename = newname + " (" + subone + ")"
+                twoname = newname + " (" + subtwo + ")"
+                assert (onename == c["Card Name"]) or (twoname == c["Card Name"])
+                one = self[onename]
+                two = self[twoname]
+
+                newc = Card(one)
+                newc["Card Name"] = newname
+                for k in ("Mana Cost", "Card Color", "Type & Class", "Artist",):
+                    if one.get(k, "") == two.get(k, ""):
+                        if one.has_key(k):
+                            newc[k] = one[k]
+                    else:
+                        newc[k] = one.get(k,'') + "/" + two.get(k,'')
+
+                if one.get("Card Text", "") == two.get("Card Text", ""):
+                    if one.has_key("Card Text"):
+                        newc["Card Text"] = one["Card Text"]
+                else:
+                    newc["Card Text"] = subone + " -- " + one.get("Card Text",'') + "\n" + subtwo + " -- " + two.get("Card Text",'')
+
+                self[newname] = newc
+                del self[onename]
+                del self[twoname]
+
     def export_list(self, fname):
+        return self.export_list_new_and_slow(fname)
+
+    def export_list_new_and_slow(self, fname):
+        """
+        This writes out the cards into a file in the "spoiler list" format.
+        """
+        def writecard(f, c):
+            f.write(c.full_print())
+
+        f = open(fname, "w")
+        for c in self.cards():
+            writecard(f, c)
+
+    def export_list_old_and_fast(self, fname):
         """
         This writes out the cards into a file in the "spoiler list" format.
         """
@@ -443,7 +526,8 @@ class DB(dictutil.UtilDict):
                 if len(k) < 7:
                     f.write('\t')
                 f.write('\t')
-                f.write(v)
+                fv = v.replace(v, "\n", "\n\t\t")
+                f.write(fv)
                 f.write('\n')
 
             ks = c.keys()
@@ -469,11 +553,86 @@ class DB(dictutil.UtilDict):
         for c in self.cards():
             writecard(f, c)
 
+LIB_RE=re.compile("\s*([0-9]*)\s*[Xx]?\s*(\S+.*)")
+
 class Library(UserList.UserList):
-    def __init__(self, initialdata=()):
+    def __init__(self, db, initialdata=()):
+        """
+        @param db a DB() instance which must contain definitions for all the cards used
+        """
+        self.db = db
         self.data = []
         self.data.extend(initialdata)
         pass
+
+    def __repr__(self):
+        return string.join(map(lambda x: x["Card Name"], self), ", ")
+
+    def __str__(self):
+        return string.join(map(lambda x: x["Card Name"], self), ", ")
+
+    def shuffle(self):
+        random.shuffle(self.data)
+
+    def import_list(self, fname):
+        """
+        This reads in the cards from a file in a "deck listing" format.
+        """
+        f = open(fname, 'r')
+        
+        for line in f.xreadlines():
+            mo = LIB_RE.match(line)
+            if mo is not None:
+                numstr, name = mo.groups()
+                assert type(numstr) is types.StringType, "numstr: %s :: %s, name: %s, mo.groups(): %s" % (numstr, type(numstr), name, mo.groups(),)
+                if numstr.strip():
+                    num = int(numstr)
+                else:
+                    num = 1
+                for i in range(num):
+                    assert self.db.has_key(name), "name: %s" % name
+                    self.append(self.db[name])
+
+    def export_list(self, fname):
+        """
+        This writes out the cards into a file in a "deck listing" format.
+        """
+        creatures = []
+        lands = []
+        spells = []
+        d = {}
+
+        for c in self:
+            d[c["Card Name"]] = d.get(c["Card Name"], 0) + 1
+
+        for n in d.keys():
+            c = self.db[n]
+            if c["Type & Class"].find("nchant") != -1:
+                spells.append(c)
+            elif c["Type & Class"].find("reature") != -1:
+                creatures.append(c)
+            elif (c["Type & Class"].find("Land") != -1) or (c["Type & Class"].find("land") != -1):
+                lands.append(c)
+            else:
+                spells.append(c)
+
+        creatures.sort(lambda x, y: cmp(d[x["Card Name"]], d[y["Card Name"]]))
+        creatures.reverse()
+        lands.sort(lambda x, y: cmp(d[x["Card Name"]], d[y["Card Name"]]))
+        lands.reverse()
+        spells.sort(lambda x, y: cmp(d[x["Card Name"]], d[y["Card Name"]]))
+        spells.reverse()
+
+        f = open(fname, "w")
+        for c in creatures:
+            f.write(str(d[c["Card Name"]]) + " " + c["Card Name"] + "\n")
+        f.write("\n")
+        for c in spells:
+            f.write(str(d[c["Card Name"]]) + " " + c["Card Name"] + "\n")
+        f.write("\n")
+        for c in lands:
+            f.write(str(d[c["Card Name"]]) + " " + c["Card Name"] + "\n")
+        f.write("\n")
 
 # initialize!
 d = DB()
@@ -500,4 +659,3 @@ for arg in sys.argv[1:]:
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
-
