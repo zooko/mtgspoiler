@@ -5,7 +5,7 @@
 # See the end of this file for the free software, open source license (BSD-style).
 
 # CVS:
-__cvsid = '$Id: mtgspoiler.py,v 1.27 2003/01/25 04:06:32 zooko Exp $'
+__cvsid = '$Id: mtgspoiler.py,v 1.28 2003/03/12 22:51:52 zooko Exp $'
 
 # HOWTO:
 # 1. Get pyutil_new from `http://sf.net/projects/pyutil'.
@@ -259,7 +259,7 @@ class Card(dictutil.UtilDict):
             if self.has_key(old):
                 self[new] = self[old]
                 del self[old]
-        assert self.has_key('Rarity'), "self.data: %s" % `self.data`
+        assert self.has_key('Rarity'), "self: %s" % `self`
         mo = RARITY_RE.match(self['Rarity'])
         assert mo is not None, { 'Rarity': self['Rarity'], 'self': self, }
         self['Rarity'] = UPDATE_RARITIES[mo.group(1)] + (mo.group(2) or "")
@@ -424,7 +424,7 @@ class Card(dictutil.UtilDict):
         else:
             res += ' ' + RARITY_NAME_MAP[self['Rarity']] + '\n'
         ks.remove('Rarity')
-        # assert self.has_key('Card Text'), { 'self': self, 'self.data': self.data, } # This is just for debugging.  It's okay if a card doesn't have card text.
+        # assert self.has_key('Card Text'), { 'self': self, 'self': self, } # This is just for debugging.  It's okay if a card doesn't have card text.
         if self.get('Card Text'):
             res += self['Card Text'] + '\n'
         if 'Card Text' in ks:
@@ -433,7 +433,7 @@ class Card(dictutil.UtilDict):
             res += self['Flavor Text'] + '\n'
         if 'Flavor Text' in ks:
             ks.remove('Flavor Text')
-        # assert self.has_key('Artist'), { 'self': self, 'self.data': self.data, } # This is just for debugging.  It's okay if a card doesn't have Artist.
+        # assert self.has_key('Artist'), { 'self': self, 'self': self, } # This is just for debugging.  It's okay if a card doesn't have Artist.
         if includeartist and self.get('Artist'):
             res += self['Artist'] + '\n'
         if 'Artist' in ks:
@@ -687,7 +687,7 @@ class DB(dictutil.UtilDict):
         thiskey = UPDATE_NAMES.get(thiskey, thiskey)
         if thiskey == "Card Name":
             thisval = _fixnames(thisval)
-            self.data[thisval] = thiscard
+            self[thisval] = thiscard
         elif thiskey == "Pow/Tou":
             if thisval.lower() == "n/a":
                 thisval = ""
@@ -725,12 +725,12 @@ class DB(dictutil.UtilDict):
             if card['Card Name'] not in names:
                 print "%s in db and not in file" % card['Card Name']
         for name in names.keys():
-            if not self.data.has_key(name):
+            if not self.has_key(name):
                 print "%s in file and not in db" % name
 
     def import_legions_unofficial_prerelease_spoiler(self, fname):
         """
-        This reads in a spoiler list in the format of the unofficial prerelease Legions text format and populates `self.data'.
+        This reads in a spoiler list in the format of the unofficial prerelease Legions text format and populates `self'.
         """
         setname = "Legions"
         s = open(fname, 'r').read()
@@ -760,7 +760,7 @@ class DB(dictutil.UtilDict):
 
     def import_urzas_legacy_spoiler(self, fname):
         """
-        This reads in a spoiler list in "Urzas Legacy" text format and populates `self.data'.
+        This reads in a spoiler list in "Urzas Legacy" text format and populates `self'.
         """
         setname = "Urza's Legacy"
         s = open(fname, 'r').read()
@@ -792,7 +792,7 @@ class DB(dictutil.UtilDict):
 
     def import_list(self, fname):
         """
-        This reads in a spoiler list in any currently known Wizards of the Coast text format and populates self.data.
+        This reads in a spoiler list in any currently known Wizards of the Coast text format and populates self.
         """
         f = open(fname, 'r')
         id2cs = dictutil.UtilDict() # k: tuple of (set name, card number,), v: list of card objects
@@ -981,7 +981,7 @@ class Library(UserList.UserList):
         return res
 
     def cards(self):
-        return self.data[:]
+        return self[:]
 
     def __repr__(self):
         return string.join(map(lambda x: x["Card Name"], self), ", ")
@@ -992,7 +992,7 @@ class Library(UserList.UserList):
     def shuffle(self, seed=None):
         if seed is not None:
             randutil.seed(seed)
-        randutil.shuffle(self.data)
+        randutil.shuffle(self)
 
     def import_list(self, fname):
         """
@@ -1258,9 +1258,9 @@ def gen_booster(d):
 code.interact("mtgspoiler", None, locals())
 
 __setupstr="""
-SEED=71
+SEED=82
 MYDECK="mine/W_clerics.deck"
-HISDECK="others/pt-chicago-masters-1st-squirrel-opp.deck"
+HISDECK="others/pt-chicago-masters-gateway-astral-slide.deck"
 deck.import_list(MYDECK)
 hisdeck.import_list(HISDECK)
 deck.shuffle(SEED)
@@ -1286,7 +1286,7 @@ for i in range(7):
 """
 
 
-# Copyright (c) 2002,2003 Bryce "Zooko" Wilcox-O'Hearn
+# Copyright (c) 2002, 2003 Bryce "Zooko" Wilcox-O'Hearn
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software to deal in this software without restriction, including
 # without limitation the rights to use, copy, modify, merge, publish,
