@@ -5,7 +5,7 @@
 # See the end of this file for the free software, open source license (BSD-style).
 
 # CVS:
-__cvsid = '$Id: mtgspoiler.py,v 1.2 2002/03/04 19:29:04 zooko Exp $'
+__cvsid = '$Id: mtgspoiler.py,v 1.3 2002/03/04 20:57:29 zooko Exp $'
 
 # HOWTO:
 # 1. Get pyutil from `http://sf.net/projects/pyutil'.
@@ -50,7 +50,7 @@ import dictutil
 import VersionNumber
 
 # major, minor, micro (== bugfix release), nano (== not-publically-visible patchlevel), flag (== not-publically-visible UNSTABLE or STABLE flag)
-versionobj = VersionNumber.VersionNumber(string.join(map(str, (0, 0, 5, 0,)), '.') + '-' + 'UNSTABLE')
+versionobj = VersionNumber.VersionNumber(string.join(map(str, (0, 0, 5, 1,)), '.') + '-' + 'UNSTABLE')
 
 true = 1
 false = 0
@@ -127,6 +127,10 @@ class Card(dictutil.UtilDict):
             if self.has_key(old):
                 self[new] = self[old]
                 del self[old]
+        # Different spoiler lists do different things for the "Mana Cost" of a land.  What *we* do is remove it from the dict entirely.
+        # (When exporting a spoiler list, it will be printed as "n/a", which is how the Torment spoiler list did it.)
+        if LAND_TYPE_AND_CLASS_RE.search(self["Type & Class"]):
+            self.del_if_present("Mana Cost")
 
     def copy(self):
         res = Card()
@@ -170,7 +174,14 @@ class Card(dictutil.UtilDict):
             return s
 
         ks = self.keys()
-        for k in ("Card Name", "Card Color", "Mana Cost", "Type & Class", "Pow/Tou", "Card Text", "Flavor Text", "Artist", "Rarity"):
+        for k in ("Card Name", "Card Color",):
+            if self.has_key(k):
+                s = formfield(s, k, self[k])
+                ks.remove(k)
+        s = formfield(s, "Mana Cost", self.get("Mana Cost", "n/a"))
+        if "Mana Cost" in ks:
+            ks.remove("Mana Cost")
+        for k in ("Type & Class", "Pow/Tou", "Card Text", "Flavor Text", "Artist", "Rarity"):
             if self.has_key(k):
                 s = formfield(s, k, self[k])
                 ks.remove(k)
@@ -239,6 +250,7 @@ class Card(dictutil.UtilDict):
         return res
 
 DOUBLE_CARD_NAME_RE=re.compile("(.*)/(.*) \(.*\)")
+LAND_TYPE_AND_CLASS_RE=re.compile("(?<![Ee]nchant )[Ll]and")
 
 class DB(dictutil.UtilDict):
     def __init__(self, initialdata={}, importfile=None):
@@ -418,7 +430,8 @@ class DB(dictutil.UtilDict):
                     thiscard['Set Name'] = setname
             if incard:
                 assert len(line) > 0
-                if line[0] in string.whitespace:
+                # some spoiler lists have typos in which continued lines don't start with white space.  We'll assume that if this line doesn't have a separator (none of ':', '\t', or '  '), *and* if the previous line was more than 50 chars, that this is one of those typos.
+                if (line[0] in string.whitespace) or ((line.find(":") == -1) and (line.find("\t") == -1) and (line.find("  ") == -1) and (len(thisval) > 50)):
                     assert thiskey is not None
                     assert thisval is not None
                     thisval += ' ' + line.strip()
@@ -443,7 +456,11 @@ class DB(dictutil.UtilDict):
 
                     if thiskey is not None:
                         thiscard[thiskey] = thisval.strip()
+                        # assert not ((thiskey == "Mana Cost") and (thisval.strip().find("and") != -1)), "thiscard.data: %s, thiskey: %s, thisval: %s" % (thiscard.data, thiskey, thisval,) # we fix this in "_update()".
+                        thiskey = None
+                        thisval = None
 
+                    # on to the next key and val!
                     sepindex = line.find(':')
                     if sepindex == -1:
                         # Some spoiler lists have typos in which the ':' is missing...  So we'll break on the first occurence of two-spaces or a tab.
@@ -453,13 +470,6 @@ class DB(dictutil.UtilDict):
                             sepindex = twospaceindex
                         elif (tabindex != -1) and ((tabindex <= twospaceindex) or (twospaceindex == -1)):
                             sepindex = tabindex
-                    if sepindex == -1:
-                        # ... except that some spoiler lists *also* have typos in which continued lines don't start with white space.  We'll assume that if this line doesn't have a separator (none of ':', '\t', or '  '), *and* if the previous line was more than 50 chars, that this is one of those typos.
-                        assert len(thisval) > 50
-                        assert thiskey is not None
-                        assert thisval is not None
-                        thisval += line.strip() + ' '
-                        continue
                     assert sepindex != -1, "line: %s, line.find('\t'): %s, line.find('  '): %s" % (`line`, line.find('\t'), line.find('  '),)
                     thiskey = line[:sepindex].strip()
                     thisval = line[sepindex+1:].strip()
@@ -469,8 +479,10 @@ class DB(dictutil.UtilDict):
             elif (not setname) and (line.find("Spoiler") != -1):
                 setname = line[:line.find("Spoiler")-1]
 
-        # Okay now merge any "double cards" into a single entry.
+        # Okay now merge any "double cards" into a single entry. (and also fix up any obsolete or inconsistent bits)
         for c in self.cards():
+            c._update()
+
             mo = DOUBLE_CARD_NAME_RE.match(c["Card Name"])
             if mo is not None:
                 subone, subtwo = mo.groups()
@@ -611,7 +623,7 @@ class Library(UserList.UserList):
                 spells.append(c)
             elif c["Type & Class"].find("reature") != -1:
                 creatures.append(c)
-            elif (c["Type & Class"].find("Land") != -1) or (c["Type & Class"].find("land") != -1):
+            elif LAND_TYPE_AND_CLASS_RE.search(c["Type & Class"]):
                 lands.append(c)
             else:
                 spells.append(c)
