@@ -5,7 +5,7 @@
 # See the end of this file for the free software, open source license (BSD-style).
 
 # CVS:
-__cvsid = '$Id: mtgspoiler.py,v 1.15 2002/12/19 05:14:09 zooko Exp $'
+__cvsid = '$Id: mtgspoiler.py,v 1.16 2002/12/19 05:19:23 zooko Exp $'
 
 # HOWTO:
 # 1. Get pyutil_new from `http://sf.net/projects/pyutil'.
@@ -149,6 +149,7 @@ def cmpmanacost(x, y):
 UPDATE_NAMES={
     "Card Title": "Card Name",
     "Pow/Tough": "Pow/Tou",
+    "Pow/Tgh": "Pow/Tou",
     "Casting Cost": "Mana Cost",
     "Cost": "Mana Cost",
     "Card Type": "Type & Class",
@@ -158,7 +159,7 @@ UPDATE_NAMES={
     "Artists": "Artist",
     }
 
-RARITY_RE=re.compile("(Common|Uncommon|Rare|Land|C|U|R|L) ?([1-9](/[1-9](/[1-9])?)?)?")
+RARITY_RE=re.compile("(Common|Uncommon|Rare|Land|C|U|R|L) ?([1-9](/[1-9](/[1-9])?)?)?$")
 UPDATE_RARITIES={
     'Common': 'C',
     'Uncommon': 'U',
@@ -643,6 +644,14 @@ class DB(dictutil.UtilDict):
                         thisval = None
                     thiskey = 'Card Text'
                     thisval = line
+                elif RARITY_RE.match(line.strip()):
+                    # Some spoiler lists (e.g. "Gaea's Touch" in the_dark.txt), have typos where the "Rarity:" param name is missing!  We'll assume that if this val matches the RARITY_RE then this is one of those.
+                    if thiskey:
+                        self._process_key_and_val(thiskey, thisval, thiscard)
+                        thiskey = None
+                        thisval = None
+                    thiskey = 'Rarity'
+                    thisval = line
                 else:
                     self._process_key_and_val(thiskey, thisval, thiscard)
                     thiskey = None
@@ -866,13 +875,7 @@ d = DB()
 
 # print "sys.argv: ", sys.argv
 for arg in sys.argv[1:]:
-    try:
-        d.import_list(arg)
-    except exceptions.StandardError, le:
-        print humanreadable.hr(le)
-        traceback.print_exc(le)
-        print "arg: %s" % arg
-        raise le
+    d.import_list(arg)
 
 def sort_board(b):
     ls = []
